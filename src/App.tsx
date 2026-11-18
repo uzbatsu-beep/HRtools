@@ -1,11 +1,12 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Search, Users, ClipboardCheck, BarChart3, FileText, 
-  Download, Copy, Plus 
+  Download, Upload, Copy, Plus, FileUp, Loader2, CheckCircle2
 } from 'lucide-react';
 import { Vacancy, Candidate, CandidateStage } from './db/schema';
 import { BOOLEAN_PRESETS, INITIAL_VACANCIES, INITIAL_CANDIDATES, REJECTION_REASONS } from './db/seed';
 import { parseRawResumeText } from './utils/cvParser';
+import { extractTextFromFile } from './utils/fileExtractor';
 import { 
   getDaysInCurrentStage, 
   calculateWeightedScore, 
@@ -24,7 +25,7 @@ const STAGE_LABELS: Record<CandidateStage, string> = {
 };
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'boolean' | 'ats' | 'scorecard' | 'analytics' | 'docs'>('boolean');
+  const [activeTab, setActiveTab] = useState<'boolean' | 'ats' | 'scorecard' | 'analytics' | 'docs'>('ats');
 
   const [vacancies, setVacancies] = useState<Vacancy[]>(() => {
     const saved = localStorage.getItem('hr_toolkit_vacancies');
@@ -44,6 +45,7 @@ export default function App() {
     localStorage.setItem('hr_toolkit_candidates', JSON.stringify(candidates));
   }, [candidates]);
 
+  // --- Модуль 1: Boolean Builder ---
   const [bTitles, setBTitles] = useState(BOOLEAN_PRESETS[0].titles.join(', '));
   const [bMust, setBMust] = useState(BOOLEAN_PRESETS[0].mustHave.join(', '));
   const [bAlt, setBAlt] = useState(BOOLEAN_PRESETS[0].alternatives.join(', '));
@@ -85,16 +87,22 @@ export default function App() {
     };
   }, [bTitles, bMust, bAlt, bNot, bLoc]);
 
+  // --- Модуль 2: Мини-ATS + Drag-and-Drop PDF/DOCX ---
   const [rawCvInput, setRawCvInput] = useState('');
   const [selectedVacancyId, setSelectedVacancyId] = useState(vacancies[0]?.id || 'vac-1');
+  const [isDragging, setIsDragging] = useState(false);
+  const [isProcessingFile, setIsProcessingFile] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const backupInputRef = useRef<HTMLInputElement>(null);
 
-  const handleParseAndAddCandidate = () => {
-    if (!rawCvInput.trim()) return;
-    const parsed = parseRawResumeText(rawCvInput);
-    const newCandidate: Candidate = {
-      id: `cand-${Date.now()}`,
+  const createCandidateFromText = (text: string, fallbackName?: string): Candidate => {
+    const parsed = parseRawResumeText(text);
+    const cleanFileName = fallbackName?.replace(/\.(pdf|docx|txt|md)$/i, '').replace(/[_-]/g, ' ');
+    return {
+      id: `cand-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       vacancyId: selectedVacancyId,
-      fullName: parsed.fullName,
+      fullName: parsed.fullName !== 'Новый кандидат' ? parsed.fullName : (cleanFileName || 'Новый кандидат'),
       contacts: {
         phone: parsed.phone,
         email: parsed.email,
@@ -107,10 +115,54 @@ export default function App() {
       expectedSalary: parsed.expectedSalary,
       stageHistory: [{ stage: 'screening', enteredAt: new Date().toISOString().slice(0, 10) }],
       scores: {},
-      rawResumeText: rawCvInput
+      rawResumeText: text
     };
+  };
+
+  const handleParseAndAddCandidate = () => {
+    if (!rawCvInput.trim()) return;
+    const newCandidate = createCandidateFromText(rawCvInput);
     setCandidates(prev => [newCandidate, ...prev]);
     setRawCvInput('');
+    setUploadStatus(`Добавлен кандидат: ${newCandidate.fullName}`);
+  };
+
+  const processFiles = async (files: FileList | File[]) => {
+    const fileArray = Array.from(files);
+    if (!fileArray.length) return;
+
+    setIsProcessingFile(true);
+    setUploadStatus(null);
+    const addedCandidates: Candidate[] = [];
+
+    try {
+      for (const file of fileArray) {
+        const extractedText = await extractTextFromFile(file);
+        const cand = createCandidateFromText(extractedText, file.name);
+        addedCandidates.push(cand);
+        if (fileArray.length === 1) {
+          setRawCvInput(extractedText);
+        }
+      }
+      setCandidates(prev => [...addedCandidates, ...prev]);
+      setUploadStatus(
+        addedCandidates.length === 1
+          ? `Файл распознан: ${addedCandidates[0].fullName} (${addedCandidates[0].skills.length} навыков)`
+          : `Пакетная загрузка: успешно добавлено ${addedCandidates.length} резюме`
+      );
+    } catch (err: any) {
+      alert(err?.message || 'Ошибка при чтении файла резюме');
+    } finally {
+      setIsProcessingFile(false);
+    }
+  };
+
+  const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      await processFiles(e.dataTransfer.files);
+    }
   };
 
   const updateCandidateStage = (candId: string, newStage: CandidateStage) => {
@@ -135,6 +187,7 @@ export default function App() {
     }));
   };
 
+  // --- Модуль 3: Скоркарта ---
   const [activeCandId, setActiveCandId] = useState<string>(candidates[0]?.id || '');
   const activeCandidate = candidates.find(c => c.id === activeCandId) || candidates[0];
   const activeVacancy = vacancies.find(v => v.id === activeCandidate?.vacancyId) || vacancies[0];
@@ -150,6 +203,7 @@ export default function App() {
     }));
   };
 
+  // --- Модуль 4: Калькуляторы ---
   const [tcSalary, setTcSalary] = useState(190000);
   const [tcDays, setTcDays] = useState(42);
   const [tcOnboarding, setTcOnboarding] = useState(3);
@@ -163,6 +217,7 @@ export default function App() {
     externalAdsCost: 15000
   }), [tcSalary, tcDays, tcOnboarding]);
 
+  // --- Экспорт / Импорт базы JSON ---
   const exportDatabase = () => {
     const payload = JSON.stringify({ vacancies, candidates, exportedAt: new Date().toISOString() }, null, 2);
     const blob = new Blob([payload], { type: 'application/json' });
@@ -173,13 +228,28 @@ export default function App() {
     a.click();
   };
 
+  const importDatabase = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      if (Array.isArray(parsed.vacancies) && Array.isArray(parsed.candidates)) {
+        setVacancies(parsed.vacancies);
+        setCandidates(parsed.candidates);
+      }
+    } catch {
+      alert('Некорректный JSON-файл резервной копии');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex font-sans">
       <aside className="w-64 bg-slate-900 border-r border-slate-800 flex flex-col justify-between p-4">
         <div>
           <div className="mb-6 px-2">
             <h1 className="text-lg font-bold tracking-tight text-emerald-400">HRtools</h1>
-            <p className="text-xs text-slate-400">v0.1.0 • Local-First Edition</p>
+            <p className="text-xs text-slate-400">v0.2.0 • Local-First PDF/DOCX</p>
           </div>
           <nav className="space-y-1">
             {[
@@ -214,6 +284,19 @@ export default function App() {
             className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-slate-800 hover:bg-slate-700 rounded text-xs font-medium text-slate-200"
           >
             <Download className="w-3.5 h-3.5" /> Экспорт БД (JSON)
+          </button>
+          <input
+            ref={backupInputRef}
+            type="file"
+            accept=".json"
+            onChange={importDatabase}
+            className="hidden"
+          />
+          <button
+            onClick={() => backupInputRef.current?.click()}
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded text-xs font-medium text-slate-400"
+          >
+            <Upload className="w-3.5 h-3.5" /> Импорт БД (JSON)
           </button>
         </div>
       </aside>
@@ -281,30 +364,71 @@ export default function App() {
 
         {activeTab === 'ats' && (
           <div className="space-y-6">
-            <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
-              <h3 className="text-sm font-semibold mb-2 text-emerald-400">Быстрый офлайн-парсер резюме (Regex Extractor)</h3>
-              <div className="flex gap-3">
-                <textarea
-                  value={rawCvInput}
-                  onChange={e => setRawCvInput(e.target.value)}
-                  placeholder="Вставьте скопированный текст резюме: ФИО, телефон, email, @telegram, желаемая ЗП и ключевые технологии распознаются автоматически..."
-                  className="flex-1 bg-slate-950 border border-slate-800 rounded p-2.5 text-xs h-20"
+            <div className="grid grid-cols-12 gap-4">
+              {/* Drag and Drop зона для PDF / DOCX */}
+              <div
+                onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
+                onDragLeave={() => setIsDragging(false)}
+                onDrop={handleDrop}
+                onClick={() => fileInputRef.current?.click()}
+                className={`col-span-5 border-2 border-dashed rounded-xl p-4 flex flex-col items-center justify-center text-center cursor-pointer transition ${
+                  isDragging 
+                    ? 'border-emerald-400 bg-emerald-500/10' 
+                    : 'border-slate-800 bg-slate-900 hover:border-slate-700'
+                }`}
+              >
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf,.docx,.txt,.md"
+                  multiple
+                  onChange={e => e.target.files && processFiles(e.target.files)}
+                  className="hidden"
                 />
-                <div className="w-64 flex flex-col justify-between">
+                {isProcessingFile ? (
+                  <Loader2 className="w-8 h-8 text-emerald-400 animate-spin mb-2" />
+                ) : (
+                  <FileUp className="w-8 h-8 text-emerald-400 mb-2" />
+                )}
+                <div className="text-xs font-semibold text-slate-200">
+                  Перетащите PDF, DOCX или TXT резюме сюда
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Поддерживается пакетная загрузка (100% локально, без отправки в сеть)
+                </p>
+                {uploadStatus && (
+                  <div className="mt-2 flex items-center gap-1 text-[11px] text-emerald-400">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> {uploadStatus}
+                  </div>
+                )}
+              </div>
+
+              {/* Ручной парсер сырого текста */}
+              <div className="col-span-7 bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col justify-between">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-xs font-semibold text-emerald-400">
+                    Или вставьте скопированный текст резюме
+                  </h3>
                   <select
                     value={selectedVacancyId}
                     onChange={e => setSelectedVacancyId(e.target.value)}
-                    className="bg-slate-950 border border-slate-800 rounded p-2 text-xs"
+                    className="bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs"
                   >
-                    {vacancies.map(v => <option key={v.id} value={v.id}>{v.title}</option>)}
+                    {vacancies.map(v => <option key={v.id} value={v.id}>Вакансия: {v.title}</option>)}
                   </select>
-                  <button
-                    onClick={handleParseAndAddCandidate}
-                    className="bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs py-2.5 px-4 rounded flex items-center justify-center gap-1.5"
-                  >
-                    <Plus className="w-4 h-4" /> Распознать и в воронку
-                  </button>
                 </div>
+                <textarea
+                  value={rawCvInput}
+                  onChange={e => setRawCvInput(e.target.value)}
+                  placeholder="ФИО, телефон, email, @telegram, желаемая ЗП и стек распознаются регулярными выражениями..."
+                  className="w-full bg-slate-950 border border-slate-800 rounded p-2 text-xs h-20 mb-2"
+                />
+                <button
+                  onClick={handleParseAndAddCandidate}
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs py-2 px-4 rounded flex items-center justify-center gap-1.5 self-end"
+                >
+                  <Plus className="w-4 h-4" /> Распознать текст в воронку
+                </button>
               </div>
             </div>
 
@@ -333,6 +457,7 @@ export default function App() {
                           <div className="font-semibold text-slate-100">{cand.fullName}</div>
                           <div className="text-slate-400 space-x-2 mt-0.5">
                             {cand.contacts.phone && <span>{cand.contacts.phone}</span>}
+                            {cand.contacts.email && <span>{cand.contacts.email}</span>}
                             {cand.contacts.telegram && <span className="text-emerald-400">{cand.contacts.telegram}</span>}
                           </div>
                         </td>
