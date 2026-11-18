@@ -1,0 +1,31 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "HRtools",
+  "version": "0.1.0",
+  "identifier": "com.uzbatsu.hrtools",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:5173",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "HRtools — Local-First HR Workstation",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 1024,
+        "minHeight": 700,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' http://localhost:1234 http://localhost:11434"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis", "msi", "appimage"]
+  }
+}
