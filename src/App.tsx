@@ -1,12 +1,15 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Search, Users, ClipboardCheck, BarChart3, FileText, 
-  Download, Upload, Copy, Plus, FileUp, Loader2, CheckCircle2
+  Download, Upload, Copy, Plus, FileUp, Loader2, CheckCircle2,
+  Database, Cpu, Sparkles, Trash2
 } from 'lucide-react';
 import { Vacancy, Candidate, CandidateStage } from './db/schema';
-import { BOOLEAN_PRESETS, INITIAL_VACANCIES, INITIAL_CANDIDATES, REJECTION_REASONS } from './db/seed';
+import { BOOLEAN_PRESETS, REJECTION_REASONS } from './db/seed';
+import { db, initAndMigrateDatabase } from './db/database';
 import { parseRawResumeText } from './utils/cvParser';
 import { extractTextFromFile } from './utils/fileExtractor';
+import { DEFAULT_LLM_CONFIG, analyzeCandidateWithLocalLlm } from './utils/localLlm';
 import { 
   getDaysInCurrentStage, 
   calculateWeightedScore, 
@@ -26,24 +29,37 @@ const STAGE_LABELS: Record<CandidateStage, string> = {
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'boolean' | 'ats' | 'scorecard' | 'analytics' | 'docs'>('ats');
+  const [dbReady, setDbReady] = useState(false);
+  const [vacancies, setVacancies] = useState<Vacancy[]>([]);
+  const [candidates, setCandidates] = useState<Candidate[]>([]);
 
-  const [vacancies, setVacancies] = useState<Vacancy[]>(() => {
-    const saved = localStorage.getItem('hr_toolkit_vacancies');
-    return saved ? JSON.parse(saved) : INITIAL_VACANCIES;
-  });
+  // Поиск и фильтрация по IndexedDB
+  const [searchQuery, setSearchQuery] = useState('');
+  const [stageFilter, setStageFilter] = useState<string>('all');
 
-  const [candidates, setCandidates] = useState<Candidate[]>(() => {
-    const saved = localStorage.getItem('hr_toolkit_candidates');
-    return saved ? JSON.parse(saved) : INITIAL_CANDIDATES;
-  });
+  // Конфигурация локальной LLM (LM Studio / Ollama)
+  const [llmEndpoint, setLlmEndpoint] = useState(
+    () => localStorage.getItem('hr_llm_endpoint') || DEFAULT_LLM_CONFIG.endpoint
+  );
+  const [llmModel, setLlmModel] = useState(
+    () => localStorage.getItem('hr_llm_model') || DEFAULT_LLM_CONFIG.model
+  );
+  const [aiLoadingCandId, setAiLoadingCandId] = useState<string | null>(null);
 
   useEffect(() => {
-    localStorage.setItem('hr_toolkit_vacancies', JSON.stringify(vacancies));
-  }, [vacancies]);
+    initAndMigrateDatabase().then(({ vacancies: v, candidates: c }) => {
+      setVacancies(v);
+      setCandidates(c);
+      setDbReady(true);
+    });
+  }, []);
 
-  useEffect(() => {
-    localStorage.setItem('hr_toolkit_candidates', JSON.stringify(candidates));
-  }, [candidates]);
+  const saveLlmSettings = (endpoint: string, model: string) => {
+    setLlmEndpoint(endpoint);
+    setLlmModel(model);
+    localStorage.setItem('hr_llm_endpoint', endpoint);
+    localStorage.setItem('hr_llm_model', model);
+  };
 
   // --- Модуль 1: Boolean Builder ---
   const [bTitles, setBTitles] = useState(BOOLEAN_PRESETS[0].titles.join(', '));
@@ -87,9 +103,9 @@ export default function App() {
     };
   }, [bTitles, bMust, bAlt, bNot, bLoc]);
 
-  // --- Модуль 2: Мини-ATS + Drag-and-Drop PDF/DOCX ---
+  // --- Модуль 2: Мини-ATS + IndexedDB + Drag-and-Drop ---
   const [rawCvInput, setRawCvInput] = useState('');
-  const [selectedVacancyId, setSelectedVacancyId] = useState(vacancies[0]?.id || 'vac-1');
+  const [selectedVacancyId, setSelectedVacancyId] = useState('vac-1');
   const [isDragging, setIsDragging] = useState(false);
   const [isProcessingFile, setIsProcessingFile] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
@@ -119,12 +135,13 @@ export default function App() {
     };
   };
 
-  const handleParseAndAddCandidate = () => {
+  const handleParseAndAddCandidate = async () => {
     if (!rawCvInput.trim()) return;
     const newCandidate = createCandidateFromText(rawCvInput);
+    await db.candidates.put(newCandidate);
     setCandidates(prev => [newCandidate, ...prev]);
     setRawCvInput('');
-    setUploadStatus(`Добавлен кандидат: ${newCandidate.fullName}`);
+    setUploadStatus(`Сохранено в IndexedDB: ${newCandidate.fullName}`);
   };
 
   const processFiles = async (files: FileList | File[]) => {
@@ -144,11 +161,12 @@ export default function App() {
           setRawCvInput(extractedText);
         }
       }
+      await db.candidates.bulkPut(addedCandidates);
       setCandidates(prev => [...addedCandidates, ...prev]);
       setUploadStatus(
         addedCandidates.length === 1
-          ? `Файл распознан: ${addedCandidates[0].fullName} (${addedCandidates[0].skills.length} навыков)`
-          : `Пакетная загрузка: успешно добавлено ${addedCandidates.length} резюме`
+          ? `В IndexedDB: ${addedCandidates[0].fullName} (${addedCandidates[0].skills.length} навыков)`
+          : `Пакетно сохранено в IndexedDB: ${addedCandidates.length} резюме`
       );
     } catch (err: any) {
       alert(err?.message || 'Ошибка при чтении файла резюме');
@@ -165,7 +183,7 @@ export default function App() {
     }
   };
 
-  const updateCandidateStage = (candId: string, newStage: CandidateStage) => {
+  const updateCandidateStage = async (candId: string, newStage: CandidateStage) => {
     let reason: string | undefined;
     if (newStage === 'rejected') {
       const input = window.prompt(
@@ -176,31 +194,73 @@ export default function App() {
       reason = REJECTION_REASONS[idx] || REJECTION_REASONS[0];
     }
 
-    setCandidates(prev => prev.map(c => {
-      if (c.id !== candId) return c;
-      return {
-        ...c,
-        stage: newStage,
-        rejectionReason: newStage === 'rejected' ? reason : c.rejectionReason,
-        stageHistory: [...c.stageHistory, { stage: newStage, enteredAt: new Date().toISOString().slice(0, 10) }]
-      };
-    }));
+    const target = candidates.find(c => c.id === candId);
+    if (!target) return;
+
+    const updated: Candidate = {
+      ...target,
+      stage: newStage,
+      rejectionReason: newStage === 'rejected' ? reason : target.rejectionReason,
+      stageHistory: [...target.stageHistory, { stage: newStage, enteredAt: new Date().toISOString().slice(0, 10) }]
+    };
+
+    await db.candidates.put(updated);
+    setCandidates(prev => prev.map(c => c.id === candId ? updated : c));
   };
 
+  const deleteCandidate = async (candId: string) => {
+    await db.candidates.delete(candId);
+    setCandidates(prev => prev.filter(c => c.id !== candId));
+  };
+
+  const runLocalAiAnalysis = async (cand: Candidate) => {
+    const vac = vacancies.find(v => v.id === cand.vacancyId) || vacancies[0];
+    if (!vac) return;
+    setAiLoadingCandId(cand.id);
+    try {
+      const summary = await analyzeCandidateWithLocalLlm(cand, vac, {
+        endpoint: llmEndpoint,
+        model: llmModel
+      });
+      const updated: Candidate = { ...cand, aiSummary: summary };
+      await db.candidates.put(updated);
+      setCandidates(prev => prev.map(c => c.id === cand.id ? updated : c));
+    } catch (err: any) {
+      alert(
+        `Не удалось подключиться к локальной LLM (${llmEndpoint}).\n` +
+        `Убедитесь, что в LM Studio включен Local Server (порт 1234) с опцией CORS, либо запущена Ollama (порт 11434).\n\nДетали: ${err?.message || err}`
+      );
+    } finally {
+      setAiLoadingCandId(null);
+    }
+  };
+
+  // Полнотекстовая фильтрация по базе кандидатов
+  const filteredCandidates = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return candidates.filter(c => {
+      if (stageFilter !== 'all' && c.stage !== stageFilter) return false;
+      if (!q) return true;
+      const inName = c.fullName.toLowerCase().includes(q);
+      const inSkills = c.skills.some(s => s.toLowerCase().includes(q));
+      const inRaw = c.rawResumeText?.toLowerCase().includes(q);
+      return inName || inSkills || inRaw;
+    });
+  }, [candidates, searchQuery, stageFilter]);
+
   // --- Модуль 3: Скоркарта ---
-  const [activeCandId, setActiveCandId] = useState<string>(candidates[0]?.id || '');
+  const [activeCandId, setActiveCandId] = useState<string>('');
   const activeCandidate = candidates.find(c => c.id === activeCandId) || candidates[0];
   const activeVacancy = vacancies.find(v => v.id === activeCandidate?.vacancyId) || vacancies[0];
 
-  const handleScoreChange = (compId: string, score: number, note: string) => {
+  const handleScoreChange = async (compId: string, score: number, note: string) => {
     if (!activeCandidate) return;
-    setCandidates(prev => prev.map(c => {
-      if (c.id !== activeCandidate.id) return c;
-      return {
-        ...c,
-        scores: { ...c.scores, [compId]: { score, note } }
-      };
-    }));
+    const updated: Candidate = {
+      ...activeCandidate,
+      scores: { ...activeCandidate.scores, [compId]: { score, note } }
+    };
+    await db.candidates.put(updated);
+    setCandidates(prev => prev.map(c => c.id === activeCandidate.id ? updated : c));
   };
 
   // --- Модуль 4: Калькуляторы ---
@@ -217,14 +277,23 @@ export default function App() {
     externalAdsCost: 15000
   }), [tcSalary, tcDays, tcOnboarding]);
 
-  // --- Экспорт / Импорт базы JSON ---
-  const exportDatabase = () => {
-    const payload = JSON.stringify({ vacancies, candidates, exportedAt: new Date().toISOString() }, null, 2);
+  // --- Экспорт / Импорт IndexedDB ---
+  const exportDatabase = async () => {
+    const [allVacancies, allCandidates] = await Promise.all([
+      db.vacancies.toArray(),
+      db.candidates.toArray()
+    ]);
+    const payload = JSON.stringify({
+      engine: 'IndexedDB-Dexie-v0.3.0',
+      exportedAt: new Date().toISOString(),
+      vacancies: allVacancies,
+      candidates: allCandidates
+    }, null, 2);
     const blob = new Blob([payload], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `hrtools-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `hrtools-indexeddb-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
   };
 
@@ -235,8 +304,15 @@ export default function App() {
       const text = await file.text();
       const parsed = JSON.parse(text);
       if (Array.isArray(parsed.vacancies) && Array.isArray(parsed.candidates)) {
+        await db.transaction('rw', db.vacancies, db.candidates, async () => {
+          await db.vacancies.clear();
+          await db.candidates.clear();
+          await db.vacancies.bulkPut(parsed.vacancies);
+          await db.candidates.bulkPut(parsed.candidates);
+        });
         setVacancies(parsed.vacancies);
         setCandidates(parsed.candidates);
+        setUploadStatus(`База IndexedDB восстановлена (${parsed.candidates.length} кандидатов)`);
       }
     } catch {
       alert('Некорректный JSON-файл резервной копии');
@@ -249,7 +325,10 @@ export default function App() {
         <div>
           <div className="mb-6 px-2">
             <h1 className="text-lg font-bold tracking-tight text-emerald-400">HRtools</h1>
-            <p className="text-xs text-slate-400">v0.2.0 • Local-First PDF/DOCX</p>
+            <div className="flex items-center gap-1.5 text-[11px] text-slate-400 mt-0.5">
+              <Database className="w-3 h-3 text-emerald-400" />
+              <span>v0.3.0 • IndexedDB ({candidates.length})</span>
+            </div>
           </div>
           <nav className="space-y-1">
             {[
@@ -276,6 +355,35 @@ export default function App() {
               );
             })}
           </nav>
+
+          {/* Панель настройки локальной LLM */}
+          <div className="mt-6 p-3 bg-slate-950 border border-slate-800 rounded-lg space-y-2">
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-400">
+              <Cpu className="w-3.5 h-3.5" /> Локальная LLM (Офлайн)
+            </div>
+            <div>
+              <label className="text-[10px] text-slate-400">Endpoint (LM Studio / Ollama)</label>
+              <input
+                value={llmEndpoint}
+                onChange={e => saveLlmSettings(e.target.value, llmModel)}
+                className="w-full mt-0.5 bg-slate-900 border border-slate-800 rounded px-2 py-1 text-[11px]"
+              />
+            </div>
+            <div className="flex gap-1">
+              <button
+                onClick={() => saveLlmSettings('http://localhost:1234/v1/chat/completions', 'local-model')}
+                className="flex-1 py-1 bg-slate-800 hover:bg-slate-700 rounded text-[10px] text-slate-300"
+              >
+                LM Studio :1234
+              </button>
+              <button
+                onClick={() => saveLlmSettings('http://localhost:11434/v1/chat/completions', 'qwen2.5:7b')}
+                className="flex-1 py-1 bg-slate-800 hover:bg-slate-700 rounded text-[10px] text-slate-300"
+              >
+                Ollama :11434
+              </button>
+            </div>
+          </div>
         </div>
 
         <div className="border-t border-slate-800 pt-4 space-y-2">
@@ -283,7 +391,7 @@ export default function App() {
             onClick={exportDatabase}
             className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-slate-800 hover:bg-slate-700 rounded text-xs font-medium text-slate-200"
           >
-            <Download className="w-3.5 h-3.5" /> Экспорт БД (JSON)
+            <Download className="w-3.5 h-3.5" /> Экспорт IndexedDB
           </button>
           <input
             ref={backupInputRef}
@@ -296,13 +404,19 @@ export default function App() {
             onClick={() => backupInputRef.current?.click()}
             className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded text-xs font-medium text-slate-400"
           >
-            <Upload className="w-3.5 h-3.5" /> Импорт БД (JSON)
+            <Upload className="w-3.5 h-3.5" /> Импорт базы (JSON)
           </button>
         </div>
       </aside>
 
       <main className="flex-1 p-6 overflow-y-auto">
-        {activeTab === 'boolean' && (
+        {!dbReady && (
+          <div className="text-xs text-slate-400 flex items-center gap-2">
+            <Loader2 className="w-4 h-4 animate-spin" /> Инициализация транзакционной базы IndexedDB...
+          </div>
+        )}
+
+        {dbReady && activeTab === 'boolean' && (
           <div className="max-w-4xl space-y-6">
             <div className="flex items-center justify-between">
               <h2 className="text-xl font-semibold">Генератор Boolean и X-Ray запросов</h2>
@@ -362,10 +476,9 @@ export default function App() {
           </div>
         )}
 
-        {activeTab === 'ats' && (
+        {dbReady && activeTab === 'ats' && (
           <div className="space-y-6">
             <div className="grid grid-cols-12 gap-4">
-              {/* Drag and Drop зона для PDF / DOCX */}
               <div
                 onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
                 onDragLeave={() => setIsDragging(false)}
@@ -394,7 +507,7 @@ export default function App() {
                   Перетащите PDF, DOCX или TXT резюме сюда
                 </div>
                 <p className="text-[11px] text-slate-400 mt-1">
-                  Поддерживается пакетная загрузка (100% локально, без отправки в сеть)
+                  Прямая запись в IndexedDB (без лимита 5 МБ)
                 </p>
                 {uploadStatus && (
                   <div className="mt-2 flex items-center gap-1 text-[11px] text-emerald-400">
@@ -403,7 +516,6 @@ export default function App() {
                 )}
               </div>
 
-              {/* Ручной парсер сырого текста */}
               <div className="col-span-7 bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col justify-between">
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="text-xs font-semibold text-emerald-400">
@@ -420,16 +532,36 @@ export default function App() {
                 <textarea
                   value={rawCvInput}
                   onChange={e => setRawCvInput(e.target.value)}
-                  placeholder="ФИО, телефон, email, @telegram, желаемая ЗП и стек распознаются регулярными выражениями..."
+                  placeholder="ФИО, телефон, email, @telegram, желаемая ЗП и стек сохраняются в IndexedDB..."
                   className="w-full bg-slate-950 border border-slate-800 rounded p-2 text-xs h-20 mb-2"
                 />
                 <button
                   onClick={handleParseAndAddCandidate}
                   className="bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs py-2 px-4 rounded flex items-center justify-center gap-1.5 self-end"
                 >
-                  <Plus className="w-4 h-4" /> Распознать текст в воронку
+                  <Plus className="w-4 h-4" /> Сохранить в IndexedDB
                 </button>
               </div>
+            </div>
+
+            {/* Полнотекстовый поиск и фильтр по базе IndexedDB */}
+            <div className="flex gap-3 bg-slate-900 p-3 rounded-xl border border-slate-800">
+              <input
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                placeholder="Полнотекстовый поиск по IndexedDB (имя, стек CODESYS / Python, слова внутри PDF резюме)..."
+                className="flex-1 bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-xs"
+              />
+              <select
+                value={stageFilter}
+                onChange={e => setStageFilter(e.target.value)}
+                className="bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-xs"
+              >
+                <option value="all">Все этапы ({candidates.length})</option>
+                {Object.entries(STAGE_LABELS).map(([k, label]) => (
+                  <option key={k} value={k}>{label}</option>
+                ))}
+              </select>
             </div>
 
             <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
@@ -437,14 +569,14 @@ export default function App() {
                 <thead className="bg-slate-950 text-slate-400 border-b border-slate-800">
                   <tr>
                     <th className="p-3">Кандидат и контакты</th>
-                    <th className="p-3">Распознанный стек</th>
+                    <th className="p-3">Распознанный стек и AI-ревью</th>
                     <th className="p-3">Ожидания (Compa-Ratio)</th>
                     <th className="p-3">Текущий этап</th>
-                    <th className="p-3">Дней на этапе</th>
+                    <th className="p-3">Действия</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800">
-                  {candidates.map(cand => {
+                  {filteredCandidates.map(cand => {
                     const vac = vacancies.find(v => v.id === cand.vacancyId);
                     const days = getDaysInCurrentStage(cand);
                     const compa = cand.expectedSalary && vac 
@@ -452,7 +584,7 @@ export default function App() {
                       : null;
 
                     return (
-                      <tr key={cand.id} className="hover:bg-slate-800/40">
+                      <tr key={cand.id} className="hover:bg-slate-800/40 align-top">
                         <td className="p-3">
                           <div className="font-semibold text-slate-100">{cand.fullName}</div>
                           <div className="text-slate-400 space-x-2 mt-0.5">
@@ -460,13 +592,23 @@ export default function App() {
                             {cand.contacts.email && <span>{cand.contacts.email}</span>}
                             {cand.contacts.telegram && <span className="text-emerald-400">{cand.contacts.telegram}</span>}
                           </div>
+                          <div className="mt-1">
+                            <span className={`px-1.5 py-0.5 rounded text-[10px] ${days > 7 ? 'bg-amber-500/20 text-amber-300' : 'bg-slate-800 text-slate-400'}`}>
+                              На этапе: {days} дн.
+                            </span>
+                          </div>
                         </td>
-                        <td className="p-3">
+                        <td className="p-3 max-w-md">
                           <div className="flex flex-wrap gap-1">
                             {cand.skills.map(s => (
                               <span key={s} className="px-1.5 py-0.5 bg-slate-800 rounded text-[11px]">{s}</span>
                             ))}
                           </div>
+                          {cand.aiSummary && (
+                            <div className="mt-2 p-2 bg-emerald-950/30 border border-emerald-500/30 rounded text-[11px] text-slate-200 whitespace-pre-wrap">
+                              {cand.aiSummary}
+                            </div>
+                          )}
                         </td>
                         <td className="p-3">
                           {cand.expectedSalary ? (
@@ -491,9 +633,28 @@ export default function App() {
                           )}
                         </td>
                         <td className="p-3">
-                          <span className={`px-2 py-0.5 rounded font-medium ${days > 7 ? 'bg-amber-500/20 text-amber-300' : 'bg-slate-800 text-slate-300'}`}>
-                            {days} дн.
-                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={() => runLocalAiAnalysis(cand)}
+                              disabled={aiLoadingCandId === cand.id}
+                              title="Проанализировать через локальную LLM (LM Studio / Ollama)"
+                              className="px-2 py-1 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 rounded text-[11px] flex items-center gap-1"
+                            >
+                              {aiLoadingCandId === cand.id ? (
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                              ) : (
+                                <Sparkles className="w-3 h-3" />
+                              )}
+                              AI-разбор
+                            </button>
+                            <button
+                              onClick={() => deleteCandidate(cand.id)}
+                              title="Удалить из IndexedDB"
+                              className="p-1 text-slate-500 hover:text-rose-400"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -504,7 +665,7 @@ export default function App() {
           </div>
         )}
 
-        {activeTab === 'scorecard' && activeCandidate && activeVacancy && (
+        {dbReady && activeTab === 'scorecard' && activeCandidate && activeVacancy && (
           <div className="max-w-4xl space-y-6">
             <div className="flex items-center justify-between bg-slate-900 p-4 rounded-xl border border-slate-800">
               <div>
@@ -557,7 +718,7 @@ export default function App() {
                     <input
                       value={current.note}
                       onChange={e => handleScoreChange(comp.id, current.score, e.target.value)}
-                      placeholder="Заметки интервьюера (конкретные ответы и артефакты опыта)..."
+                      placeholder="Заметки интервьюера (сохраняются в IndexedDB мгновенно)..."
                       className="w-full bg-slate-950 border border-slate-800 rounded p-2 text-xs"
                     />
                   </div>
@@ -567,7 +728,7 @@ export default function App() {
           </div>
         )}
 
-        {activeTab === 'analytics' && (
+        {dbReady && activeTab === 'analytics' && (
           <div className="max-w-4xl space-y-6">
             <h2 className="text-xl font-semibold">Калькулятор стоимости замены сотрудника (Turnover Cost)</h2>
             <div className="grid grid-cols-3 gap-4 bg-slate-900 p-4 rounded-xl border border-slate-800">
@@ -608,7 +769,7 @@ export default function App() {
           </div>
         )}
 
-        {activeTab === 'docs' && activeCandidate && activeVacancy && (
+        {dbReady && activeTab === 'docs' && activeCandidate && activeVacancy && (
           <div className="max-w-3xl space-y-4">
             <h2 className="text-xl font-semibold">Генератор Оффера и Плана 30-60-90 (Markdown)</h2>
             <pre className="bg-slate-900 border border-slate-800 rounded-xl p-4 text-xs whitespace-pre-wrap font-mono text-slate-200">

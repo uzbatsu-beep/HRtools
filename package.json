@@ -1,7 +1,7 @@
 {
   "name": "hrtools",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Local-First Offline Workstation for Technical & Industrial HR",
   "type": "module",
   "scripts": {
@@ -11,6 +11,7 @@
     "tauri": "tauri"
   },
   "dependencies": {
+    "dexie": "^4.4.7",
     "lucide-react": "^0.400.0",
     "mammoth": "^1.13.0",
     "pdfjs-dist": "^6.5.438",

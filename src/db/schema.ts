@@ -50,6 +50,7 @@ export interface Candidate {
   stageHistory: StageHistoryEntry[];
   scores: Record<string, { score: number; note: string }>;
   rawResumeText?: string;
+  aiSummary?: string;
 }
 
 export interface BooleanPreset {
