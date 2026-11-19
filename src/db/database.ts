@@ -5,7 +5,7 @@ import { INITIAL_VACANCIES, INITIAL_CANDIDATES } from './seed';
 export class HRToolsDatabase extends Dexie {
   vacancies!: Table<Vacancy, string>;
   candidates!: Table<Candidate, string>;
-  metadata!: Table<{ key: string; value: boolean }, string>;
+  metadata!: Table<{ key: string; value: boolean | string }, string>;
 
   constructor(name = 'HRToolsIndexedDB') {
     super(name);
@@ -19,6 +19,30 @@ export class HRToolsDatabase extends Dexie {
 }
 
 export const db = new HRToolsDatabase();
+
+export async function getRestoreId(database: HRToolsDatabase) {
+  const entry = await database.metadata.get('restoreId');
+  return typeof entry?.value === 'string' ? entry.value : '';
+}
+
+export async function addCandidates(database: HRToolsDatabase, candidates: Candidate[], restoreId: string) {
+  await database.transaction('rw', database.metadata, database.vacancies, database.candidates, async () => {
+    if (restoreId !== await getRestoreId(database)) throw new Error('База была восстановлена. Выберите вакансию и повторите добавление.');
+    const vacancyIds = [...new Set(candidates.map(candidate => candidate.vacancyId))];
+    const vacancies = await database.vacancies.bulkGet(vacancyIds);
+    if (vacancies.some(vacancy => !vacancy)) {
+      throw new Error('Выбранная вакансия отсутствует. Обновите список вакансий и повторите добавление.');
+    }
+    await database.candidates.bulkAdd(candidates);
+  });
+}
+
+export function saveAiSummary(database: HRToolsDatabase, id: string, summary: string, restoreId: string) {
+  return database.transaction('rw', database.metadata, database.candidates, async () => {
+    if (restoreId !== await getRestoreId(database)) return false;
+    return (await database.candidates.update(id, { aiSummary: summary })) === 1;
+  });
+}
 
 export async function initAndMigrateDatabase(database = db): Promise<{
   vacancies: Vacancy[];

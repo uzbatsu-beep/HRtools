@@ -4,6 +4,7 @@ version = "1.0.1"
 description = "Local-First Offline Workstation for HR & Technical Recruiting"
 authors = ["uzbatsu-beep"]
 edition = "2021"
+license = "GPL-3.0-only"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

@@ -29,7 +29,7 @@ export function parseRawResumeText(rawText: string): ParsedResume {
 
   const emailMatch = rawText.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
   const phoneMatch = rawText.match(/(?:\+7|8)[\s\-()]*\d{3}[\s\-()]*\d{3}[\s\-]*\d{2}[\s\-]*\d{2}/);
-  const tgMatch = rawText.match(/(?:t\.me\/|@)([a-zA-Z0-9_]{4,32})/);
+  const tgMatch = rawText.match(/(?:\bt\.me\/|(?:^|[\s(:,;])@)([a-zA-Z0-9_]{4,32})\b/i);
   const ghMatch = rawText.match(/github\.com\/[a-zA-Z0-9_-]+/);
   const salaryMatch = rawText.match(/(\d{2,3}[\s\u00A0]?\d{3})\s*(?:руб|₽|RUB|р\.)/i);
   const expectedSalary = salaryMatch 

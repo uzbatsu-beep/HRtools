@@ -6,8 +6,9 @@ import {
 } from 'lucide-react';
 import { Vacancy, Candidate, CandidateStage, Competency } from './db/schema';
 import { BOOLEAN_PRESETS, REJECTION_REASONS } from './db/seed';
-import { db, initAndMigrateDatabase } from './db/database';
-import { parseBackup, restoreBackup } from './db/backup';
+import { addCandidates, db, getRestoreId, initAndMigrateDatabase, saveAiSummary } from './db/database';
+import { Backup, parseBackup, readBackup, restoreBackup, unlinkedCandidates } from './db/backup';
+import { RepairBackup } from './components/RepairBackup';
 import { parseRawResumeText } from './utils/cvParser';
 import { extractTextFromFile } from './utils/fileExtractor';
 import { DEFAULT_LLM_CONFIG, analyzeCandidateWithLocalLlm } from './utils/localLlm';
@@ -209,7 +210,10 @@ export default function App() {
 
   // --- Модуль 3: Мини-ATS + IndexedDB + Drag-and-Drop ---
   const [rawCvInput, setRawCvInput] = useState('');
-  const [selectedVacancyId, setSelectedVacancyId] = useState('vac-1');
+  const [savingResumeText, setSavingResumeText] = useState(false);
+  const [preferredVacancyId, setPreferredVacancyId] = useState('');
+  const selectedVacancyId = vacancies.find(v => v.id === preferredVacancyId)?.id ?? vacancies[0]?.id ?? '';
+  const [backupForRepair, setBackupForRepair] = useState<Backup | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isProcessingFile, setIsProcessingFile] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
@@ -240,32 +244,37 @@ export default function App() {
   };
 
   const handleParseAndAddCandidate = async () => {
-    if (!rawCvInput.trim()) return;
+    if (savingResumeText || !selectedVacancyId || !rawCvInput.trim()) return;
     const newCandidate = createCandidateFromText(rawCvInput);
-    await db.candidates.put(newCandidate);
-    setCandidates(prev => [newCandidate, ...prev]);
-    setRawCvInput('');
-    setUploadStatus(`Сохранено в IndexedDB: ${newCandidate.fullName}`);
+    setSavingResumeText(true);
+    try {
+      await addCandidates(db, [newCandidate], await getRestoreId(db));
+      setCandidates(prev => [newCandidate, ...prev]);
+      setRawCvInput(current => current === rawCvInput ? '' : current);
+      setUploadStatus(`Сохранено в IndexedDB: ${newCandidate.fullName}`);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Не удалось сохранить кандидата.');
+    } finally {
+      setSavingResumeText(false);
+    }
   };
 
   const processFiles = async (files: FileList | File[]) => {
     const fileArray = Array.from(files);
-    if (!fileArray.length) return;
+    if (!selectedVacancyId || !fileArray.length) return;
 
     setIsProcessingFile(true);
     setUploadStatus(null);
     const addedCandidates: Candidate[] = [];
 
     try {
+      const restoreId = await getRestoreId(db);
       for (const file of fileArray) {
         const extractedText = await extractTextFromFile(file);
         const cand = createCandidateFromText(extractedText, file.name);
         addedCandidates.push(cand);
-        if (fileArray.length === 1) {
-          setRawCvInput(extractedText);
-        }
       }
-      await db.candidates.bulkPut(addedCandidates);
+      await addCandidates(db, addedCandidates, restoreId);
       setCandidates(prev => [...addedCandidates, ...prev]);
       setUploadStatus(
         addedCandidates.length === 1
@@ -336,17 +345,18 @@ export default function App() {
   };
 
   const runLocalAiAnalysis = async (cand: Candidate) => {
-    const vac = vacancies.find(v => v.id === cand.vacancyId) || vacancies[0];
+    const vac = vacancies.find(v => v.id === cand.vacancyId);
     if (!vac) return;
     setAiLoadingCandId(cand.id);
     try {
+      const restoreId = await getRestoreId(db);
       const summary = await analyzeCandidateWithLocalLlm(cand, vac, {
         endpoint: llmEndpoint,
         model: llmModel
       });
-      const updated: Candidate = { ...cand, aiSummary: summary };
-      await db.candidates.put(updated);
-      setCandidates(prev => prev.map(c => c.id === cand.id ? updated : c));
+      if (await saveAiSummary(db, cand.id, summary, restoreId)) {
+        setCandidates(prev => prev.map(c => c.id === cand.id ? { ...c, aiSummary: summary } : c));
+      }
     } catch (err: any) {
       alert(
         `Не удалось подключиться к локальной LLM (${llmEndpoint}).\n` +
@@ -372,12 +382,15 @@ export default function App() {
 
   const handleScoreChange = async (compId: string, score: number, note: string) => {
     if (!activeCandidate) return;
-    const updated: Candidate = {
-      ...activeCandidate,
-      scores: { ...activeCandidate.scores, [compId]: { score, note } }
-    };
-    await db.candidates.put(updated);
-    setCandidates(prev => prev.map(c => c.id === activeCandidate.id ? updated : c));
+    const entry = { score, note };
+    const saved = await db.candidates.update(activeCandidate.id, candidate => {
+      candidate.scores = { ...candidate.scores, [compId]: entry };
+    });
+    if (saved) {
+      setCandidates(prev => prev.map(c => c.id === activeCandidate.id
+        ? { ...c, scores: { ...c.scores, [compId]: entry } }
+        : c));
+    }
   };
 
   // --- Модуль 5: Сравнение кандидатов бок о бок (Side-by-Side v0.5.0) ---
@@ -440,15 +453,11 @@ export default function App() {
 
   // --- Экспорт / Импорт IndexedDB ---
   const exportDatabase = async () => {
-    const [allVacancies, allCandidates] = await Promise.all([
-      db.vacancies.toArray(),
-      db.candidates.toArray()
-    ]);
+    const snapshot = await readBackup(db);
     const payload = JSON.stringify({
       engine: 'IndexedDB-Dexie-v1.0.1',
       exportedAt: new Date().toISOString(),
-      vacancies: allVacancies,
-      candidates: allCandidates
+      ...snapshot
     }, null, 2);
     const blob = new Blob([payload], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -458,14 +467,14 @@ export default function App() {
     a.click();
   };
 
-  const importDatabase = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const confirmRestore = async (parsed: Backup) => {
     try {
-      const text = await file.text();
-      const parsed = parseBackup(text);
       if (!window.confirm(`Восстановить ${parsed.vacancies.length} вакансий и ${parsed.candidates.length} кандидатов? Текущая база будет заменена. Перед продолжением сохраните резервную копию текущих данных.`)) return;
       await restoreBackup(db, parsed);
+      setBackupForRepair(null);
+      setPreferredVacancyId('');
+      setRawCvInput('');
+      setVacancyFilter('all');
       setVacancies(parsed.vacancies);
       setCandidates(parsed.candidates);
       setDossierId(null);
@@ -474,8 +483,19 @@ export default function App() {
       setUploadStatus(`База IndexedDB восстановлена (${parsed.candidates.length} кандидатов)`);
     } catch (error) {
       alert(`Не удалось восстановить резервную копию: ${error instanceof Error ? error.message : 'неизвестная ошибка'}`);
-    } finally {
-      e.target.value = '';
+    }
+  };
+
+  const importDatabase = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      const parsed = parseBackup(await file.text(), { allowUnlinkedCandidates: true });
+      if (unlinkedCandidates(parsed).length) setBackupForRepair(parsed);
+      else await confirmRestore(parsed);
+    } catch (error) {
+      alert(`Не удалось прочитать копию: ${error instanceof Error ? error.message : 'неизвестная ошибка'}`);
     }
   };
 
@@ -1030,7 +1050,10 @@ export default function App() {
 
         {dbReady && activeTab === 'ats' && (
           <div className="space-y-6">
-            <div className="grid grid-cols-12 gap-4">
+            {!selectedVacancyId ? <div className="rounded-xl border border-line bg-panel p-4">
+              <p className="mb-2 text-sm">Чтобы добавить резюме, создайте первую вакансию.</p>
+              <button type="button" onClick={handleCreateVacancy} className="rounded bg-accent-fill px-3 py-2 text-on-accent">Создать вакансию</button>
+            </div> : <div className="grid grid-cols-12 gap-4">
               <div
                 onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
                 onDragLeave={() => setIsDragging(false)}
@@ -1075,7 +1098,8 @@ export default function App() {
                   </h3>
                   <select
                     value={selectedVacancyId}
-                    onChange={e => setSelectedVacancyId(e.target.value)}
+                    aria-label="Вакансия для нового кандидата"
+                    onChange={e => setPreferredVacancyId(e.target.value)}
                     className="bg-canvas border border-line rounded px-2 py-1 text-xs"
                   >
                     {vacancies.map(v => <option key={v.id} value={v.id}>Вакансия: {v.title}</option>)}
@@ -1089,12 +1113,13 @@ export default function App() {
                 />
                 <button
                   onClick={handleParseAndAddCandidate}
+                  disabled={savingResumeText || !rawCvInput.trim()}
                   className="bg-accent-fill hover:bg-accent-hover text-on-accent font-medium text-xs py-2 px-4 rounded flex items-center justify-center gap-1.5 self-end"
                 >
                   <Plus className="w-4 h-4" /> Сохранить в IndexedDB
                 </button>
               </div>
-            </div>
+            </div>}
 
             <div className="shadow-surface flex flex-wrap gap-3 bg-panel p-3 rounded-xl border border-line">
               <button type="button" onClick={() => setAtsViewMode('kanban')} aria-pressed={atsViewMode === 'kanban'} className="px-3 py-1 rounded bg-subtle text-xs">Канбан</button>
@@ -1598,6 +1623,7 @@ export default function App() {
             setCandidates(prev => prev.map(c => c.id === dossierCandidate.id ? { ...c, contacts, expectedSalary } : c));
           }} />}
 
+        {backupForRepair && <RepairBackup backup={backupForRepair} onRestore={confirmRestore} onCancel={() => setBackupForRepair(null)} />}
       </main>
     </div>
   );
