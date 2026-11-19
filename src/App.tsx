@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Search, Users, ClipboardCheck, BarChart3, FileText, Briefcase,
   Download, Upload, Copy, Plus, FileUp, Loader2, CheckCircle2,
-  Database, Cpu, Sparkles, Trash2, Columns, FileSpreadsheet
+  Database, Cpu, Sparkles, Trash2, Columns, FileSpreadsheet, GripVertical
 } from 'lucide-react';
 import { Vacancy, Candidate, CandidateStage, Competency } from './db/schema';
 import { BOOLEAN_PRESETS, REJECTION_REASONS } from './db/seed';
@@ -10,6 +10,7 @@ import { db, initAndMigrateDatabase } from './db/database';
 import { parseRawResumeText } from './utils/cvParser';
 import { extractTextFromFile } from './utils/fileExtractor';
 import { DEFAULT_LLM_CONFIG, analyzeCandidateWithLocalLlm } from './utils/localLlm';
+import { filterCandidates, transitionCandidate } from './utils/candidateStages';
 import { 
   getDaysInCurrentStage, 
   calculateWeightedScore, 
@@ -43,6 +44,10 @@ export default function App() {
   // Поиск и фильтрация по IndexedDB
   const [searchQuery, setSearchQuery] = useState('');
   const [stageFilter, setStageFilter] = useState<string>('all');
+  const [vacancyFilter, setVacancyFilter] = useState('all');
+  const [atsViewMode, setAtsViewMode] = useState<'kanban' | 'table'>('kanban');
+  const [draggedCandId, setDraggedCandId] = useState<string | null>(null);
+  const [dragOverStage, setDragOverStage] = useState<CandidateStage | null>(null);
   const [analyticsVacancyFilter, setAnalyticsVacancyFilter] = useState<string>('all');
 
   // Состояние модуля сравнения кандидатов (Side-by-Side v0.5.0)
@@ -277,6 +282,8 @@ export default function App() {
   };
 
   const updateCandidateStage = async (candId: string, newStage: CandidateStage) => {
+    const target = candidates.find(c => c.id === candId);
+    if (!target || target.stage === newStage) return;
     let reason: string | undefined;
     if (newStage === 'rejected') {
       const input = window.prompt(
@@ -292,18 +299,29 @@ export default function App() {
       reason = REJECTION_REASONS[idx];
     }
 
-    const target = candidates.find(c => c.id === candId);
-    if (!target) return;
+    const updated = transitionCandidate(target, newStage, reason, new Date().toISOString().slice(0, 10));
+    if (!updated) return;
+    try {
+      const saved = await db.candidates.update(candId, { stage: updated.stage, rejectionReason: updated.rejectionReason, stageHistory: updated.stageHistory });
+      if (!saved) throw new Error('Candidate not found');
+      setCandidates(prev => prev.map(c => c.id === candId ? { ...c, stage: updated.stage, rejectionReason: updated.rejectionReason, stageHistory: updated.stageHistory } : c));
+    } catch {
+      alert('Не удалось сохранить этап кандидата.');
+    }
+  };
 
-    const updated: Candidate = {
-      ...target,
-      stage: newStage,
-      rejectionReason: newStage === 'rejected' ? reason : undefined,
-      stageHistory: [...target.stageHistory, { stage: newStage, enteredAt: new Date().toISOString().slice(0, 10) }]
-    };
+  const handleKanbanDragStart = (e: React.DragEvent<HTMLDivElement>, candId: string) => {
+    setDraggedCandId(candId);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('application/x-hrtools-candidate', candId);
+  };
 
-    await db.candidates.put(updated);
-    setCandidates(prev => prev.map(c => c.id === candId ? updated : c));
+  const handleKanbanDropOnStage = async (e: React.DragEvent<HTMLDivElement>, targetStage: CandidateStage) => {
+    e.preventDefault();
+    const id = e.dataTransfer.getData('application/x-hrtools-candidate');
+    setDraggedCandId(null);
+    setDragOverStage(null);
+    if (id && id === draggedCandId) await updateCandidateStage(id, targetStage);
   };
 
   const deleteCandidate = async (candId: string) => {
@@ -334,21 +352,15 @@ export default function App() {
   };
 
   const filteredCandidates = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    return candidates.filter(c => {
-      if (stageFilter !== 'all' && c.stage !== stageFilter) return false;
-      if (!q) return true;
-      const inName = c.fullName.toLowerCase().includes(q);
-      const inSkills = c.skills.some(s => s.toLowerCase().includes(q));
-      const inRaw = c.rawResumeText?.toLowerCase().includes(q);
-      return inName || inSkills || inRaw;
-    });
-  }, [candidates, searchQuery, stageFilter]);
+    return filterCandidates(candidates, searchQuery, stageFilter, vacancyFilter);
+  }, [candidates, searchQuery, stageFilter, vacancyFilter]);
 
   // --- Модуль 4: Скоркарта ---
   const [activeCandId, setActiveCandId] = useState<string>('');
   const activeCandidate = candidates.find(c => c.id === activeCandId) || candidates[0];
   const activeVacancy = vacancies.find(v => v.id === activeCandidate?.vacancyId) || vacancies[0];
+
+  const openScorecardForCandidate = (candId: string) => { setActiveCandId(candId); setActiveTab('scorecard'); };
 
   const handleScoreChange = async (compId: string, score: number, note: string) => {
     if (!activeCandidate) return;
@@ -425,7 +437,7 @@ export default function App() {
       db.candidates.toArray()
     ]);
     const payload = JSON.stringify({
-      engine: 'IndexedDB-Dexie-v0.5.0',
+      engine: 'IndexedDB-Dexie-v0.6.0',
       exportedAt: new Date().toISOString(),
       vacancies: allVacancies,
       candidates: allCandidates
@@ -468,7 +480,7 @@ export default function App() {
             <h1 className="text-lg font-bold tracking-tight text-emerald-400">HRtools</h1>
             <div className="flex items-center gap-1.5 text-[11px] text-slate-400 mt-0.5">
               <Database className="w-3 h-3 text-emerald-400" />
-              <span>v0.5.0 • IndexedDB ({candidates.length})</span>
+              <span>v0.6.0 • IndexedDB ({candidates.length})</span>
             </div>
           </div>
           <nav className="space-y-1">
@@ -1071,7 +1083,13 @@ export default function App() {
               </div>
             </div>
 
-            <div className="flex gap-3 bg-slate-900 p-3 rounded-xl border border-slate-800">
+            <div className="flex flex-wrap gap-3 bg-slate-900 p-3 rounded-xl border border-slate-800">
+              <button type="button" onClick={() => setAtsViewMode('kanban')} aria-pressed={atsViewMode === 'kanban'} className="px-3 py-1 rounded bg-slate-800 text-xs">Канбан</button>
+              <button type="button" onClick={() => setAtsViewMode('table')} aria-pressed={atsViewMode === 'table'} className="px-3 py-1 rounded bg-slate-800 text-xs">Таблица</button>
+              <select aria-label="Фильтр по вакансии" value={vacancyFilter} onChange={e => setVacancyFilter(e.target.value)} className="bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-xs">
+                <option value="all">Все вакансии</option>
+                {vacancies.map(v => <option key={v.id} value={v.id}>{v.title}</option>)}
+              </select>
               <input
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
@@ -1091,6 +1109,176 @@ export default function App() {
               <button onClick={() => exportCandidatesToCsv(filteredCandidates, vacancies, STAGE_LABELS)} className="px-3 py-1.5 bg-slate-800 text-emerald-300 rounded text-xs shrink-0">CSV ({filteredCandidates.length})</button>
             </div>
 
+            {atsViewMode === 'kanban' && (
+              <div className="flex gap-3 overflow-x-auto pb-4">
+                {(Object.keys(STAGE_LABELS) as CandidateStage[]).map(stageKey => {
+                  const stageCandidates = filteredCandidates.filter(c => c.stage === stageKey);
+                  const isDragTarget = dragOverStage === stageKey;
+
+                  return (
+                    <div
+                      key={stageKey}
+                      onDragOver={e => {
+                        if (!draggedCandId) return;
+                        e.preventDefault();
+                        if (dragOverStage !== stageKey) setDragOverStage(stageKey);
+                      }}
+                      onDragLeave={() => setDragOverStage(null)}
+                      onDrop={e => handleKanbanDropOnStage(e, stageKey)}
+                      className={`w-72 shrink-0 rounded-xl border p-3 flex flex-col justify-between transition ${
+                        isDragTarget
+                          ? 'bg-emerald-950/30 border-emerald-400'
+                          : 'bg-slate-900/90 border-slate-800'
+                      }`}
+                    >
+                      <div>
+                        {/* Шапка колонки */}
+                        <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-800">
+                          <span className={`text-xs font-bold ${
+                            stageKey === 'rejected'
+                              ? 'text-rose-400'
+                              : stageKey === 'hired'
+                              ? 'text-emerald-400'
+                              : 'text-slate-200'
+                          }`}>
+                            {STAGE_LABELS[stageKey]}
+                          </span>
+                          <span className="px-2 py-0.5 bg-slate-950 border border-slate-800 rounded-full text-[11px] font-semibold text-slate-300">
+                            {stageCandidates.length}
+                          </span>
+                        </div>
+
+                        {/* Список перетаскиваемых карточек */}
+                        <div className="space-y-2.5 min-h-[420px]">
+                          {stageCandidates.map(cand => {
+                            const vac = vacancies.find(v => v.id === cand.vacancyId);
+                            const days = getDaysInCurrentStage(cand);
+                            const wScore = vac ? calculateWeightedScore(vac.competencies, cand.scores) : 0;
+                            const compa = cand.expectedSalary && vac
+                              ? calculateCompaRatio(cand.expectedSalary, vac.salaryMin, vac.salaryMax)
+                              : null;
+
+                            return (
+                              <div
+                                key={cand.id}
+                                draggable
+                                onDragStart={e => handleKanbanDragStart(e, cand.id)}
+                                onDragEnd={() => {
+                                  setDraggedCandId(null);
+                                  setDragOverStage(null);
+                                }}
+                                className={`bg-slate-950 border rounded-lg p-3 cursor-grab active:cursor-grabbing hover:border-slate-600 transition space-y-2 ${
+                                  draggedCandId === cand.id
+                                    ? 'opacity-40 border-emerald-400'
+                                    : 'border-slate-800'
+                                }`}
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <div>
+                                    <div className="text-xs font-bold text-slate-100 leading-snug">
+                                      {cand.fullName}
+                                    </div>
+                                    <div className="text-[10px] text-slate-400 mt-0.5">
+                                      {vac?.title || 'Вакансия'}
+                                    </div>
+                                  </div>
+                                  <GripVertical className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+                                </div>
+
+                                {/* Бейджи метрик: Балл STAR, Compa-Ratio и Дни на этапе */}
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  {wScore > 0 && (
+                                    <span className="px-1.5 py-0.5 bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 rounded text-[10px] font-semibold">
+                                      ★ {wScore}
+                                    </span>
+                                  )}
+                                  {cand.expectedSalary && (
+                                    <span className="px-1.5 py-0.5 bg-slate-900 border border-slate-800 rounded text-[10px] text-slate-200">
+                                      {cand.expectedSalary.toLocaleString('ru-RU')} ₽
+                                      {compa ? ` (${compa.ratio}%)` : ''}
+                                    </span>
+                                  )}
+                                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                                    days > 7
+                                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                                      : 'bg-slate-900 text-slate-400'
+                                  }`}>
+                                    {days} дн.
+                                  </span>
+                                </div>
+
+                                {/* Навыки */}
+                                {cand.skills.length > 0 && (
+                                  <div className="flex flex-wrap gap-1">
+                                    {cand.skills.slice(0, 5).map(skill => (
+                                      <span key={skill} className="px-1.5 py-0.5 bg-slate-900 text-slate-300 rounded text-[10px]">
+                                        {skill}
+                                      </span>
+                                    ))}
+                                    {cand.skills.length > 5 && (
+                                      <span className="text-[10px] text-slate-500">+{cand.skills.length - 5}</span>
+                                    )}
+                                  </div>
+                                )}
+
+                                {/* Контакты */}
+                                <div className="text-[10px] text-slate-400 flex flex-wrap gap-2">
+                                  {cand.contacts.telegram && (
+                                    <span className="text-emerald-400">{cand.contacts.telegram}</span>
+                                  )}
+                                  {cand.contacts.phone && <span>{cand.contacts.phone}</span>}
+                                </div>
+
+                                {/* Причина отказа (если в отказе) */}
+                                {cand.rejectionReason && (
+                                  <div className="text-[10px] text-rose-400 bg-rose-950/30 border border-rose-500/20 rounded p-1.5">
+                                    {cand.rejectionReason}
+                                  </div>
+                                )}
+
+                                <label className="block text-[10px] text-slate-400">Этап кандидата
+                                  <select aria-label={`Этап: ${cand.fullName}`} value={cand.stage} onChange={e => updateCandidateStage(cand.id, e.target.value as CandidateStage)} className="block w-full bg-slate-900 border border-slate-700 rounded p-1 text-xs">
+                                    {Object.entries(STAGE_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+                                  </select>
+                                </label>
+
+                                {/* Быстрые действия на карточке */}
+                                <div className="pt-1.5 border-t border-slate-900 flex items-center justify-between">
+                                  <button
+                                    onClick={() => openScorecardForCandidate(cand.id)}
+                                    className="text-[10px] text-slate-300 hover:text-emerald-300 flex items-center gap-1"
+                                  >
+                                    <ClipboardCheck className="w-3 h-3" /> Скоркарта
+                                  </button>
+                                  <div className="flex items-center gap-1.5">
+                                    <button
+                                      onClick={() => runLocalAiAnalysis(cand)}
+                                      disabled={aiLoadingCandId === cand.id}
+                                      className="text-[10px] text-emerald-400 hover:text-emerald-300 flex items-center gap-1"
+                                      title="Запустить локальный AI-разбор"
+                                    >
+                                      {aiLoadingCandId === cand.id ? (
+                                        <Loader2 className="w-3 h-3 animate-spin" />
+                                      ) : (
+                                        <Sparkles className="w-3 h-3" />
+                                      )}
+                                      AI
+                                    </button>
+
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {atsViewMode === 'table' && (
             <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
               <table className="w-full text-left text-xs">
                 <thead className="bg-slate-950 text-slate-400 border-b border-slate-800">
@@ -1190,6 +1378,7 @@ export default function App() {
                 </tbody>
               </table>
             </div>
+            )}
           </div>
         )}
 
