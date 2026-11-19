@@ -32,6 +32,18 @@ export interface StageHistoryEntry {
   enteredAt: string;
 }
 
+export interface OfferDraft {
+  companyName: string;
+  mentorName: string;
+  salary: string;
+  salaryBasis: 'net' | 'gross';
+  startDate: string;
+  probationMonths: string;
+  plan30: string;
+  plan60: string;
+  plan90: string;
+}
+
 export interface Candidate {
   id: string;
   vacancyId: string;
@@ -51,6 +63,7 @@ export interface Candidate {
   scores: Record<string, { score: number; note: string }>;
   rawResumeText?: string;
   aiSummary?: string;
+  offerDraft?: OfferDraft;
 }
 
 export interface BooleanPreset {

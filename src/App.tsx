@@ -11,6 +11,8 @@ import { parseRawResumeText } from './utils/cvParser';
 import { extractTextFromFile } from './utils/fileExtractor';
 import { DEFAULT_LLM_CONFIG, analyzeCandidateWithLocalLlm } from './utils/localLlm';
 import { filterCandidates, transitionCandidate } from './utils/candidateStages';
+import { CandidateDossier } from './components/CandidateDossier';
+import { OfferEditor } from './components/OfferEditor';
 import { 
   getDaysInCurrentStage, 
   calculateWeightedScore, 
@@ -37,6 +39,7 @@ const STAGE_LABELS: Record<CandidateStage, string> = {
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'boolean' | 'vacancies' | 'ats' | 'scorecard' | 'compare' | 'analytics' | 'docs'>('ats');
+  const [offerDirty, setOfferDirty] = useState(false);
   const [dbReady, setDbReady] = useState(false);
   const [vacancies, setVacancies] = useState<Vacancy[]>([]);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
@@ -356,6 +359,8 @@ export default function App() {
   }, [candidates, searchQuery, stageFilter, vacancyFilter]);
 
   // --- Модуль 4: Скоркарта ---
+  const [dossierId, setDossierId] = useState<string | null>(null);
+  const dossierCandidate = candidates.find(c => c.id === dossierId);
   const [activeCandId, setActiveCandId] = useState<string>('');
   const activeCandidate = candidates.find(c => c.id === activeCandId) || candidates[0];
   const activeVacancy = vacancies.find(v => v.id === activeCandidate?.vacancyId) || vacancies[0];
@@ -497,7 +502,11 @@ export default function App() {
               return (
                 <button
                   key={item.id}
-                  onClick={() => setActiveTab(item.id as any)}
+                  onClick={() => {
+                    if (activeTab === 'docs' && item.id !== 'docs' && offerDirty && !window.confirm('Есть несохранённые изменения оффера. Перейти на другую вкладку?')) return;
+                    if (item.id !== 'docs') setOfferDirty(false);
+                    setActiveTab(item.id as any);
+                  }}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${
                     activeTab === item.id 
                       ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30' 
@@ -1176,7 +1185,7 @@ export default function App() {
                                 <div className="flex items-start justify-between gap-2">
                                   <div>
                                     <div className="text-xs font-bold text-slate-100 leading-snug">
-                                      {cand.fullName}
+                                      <button type="button" onClick={() => setDossierId(cand.id)} className="text-left underline">{cand.fullName}</button>
                                     </div>
                                     <div className="text-[10px] text-slate-400 mt-0.5">
                                       {vac?.title || 'Вакансия'}
@@ -1301,7 +1310,7 @@ export default function App() {
                     return (
                       <tr key={cand.id} className="hover:bg-slate-800/40 align-top">
                         <td className="p-3">
-                          <div className="font-semibold text-slate-100">{cand.fullName}</div>
+                          <button type="button" onClick={() => setDossierId(cand.id)} className="font-semibold text-slate-100 underline text-left">{cand.fullName}</button>
                           <div className="text-[11px] text-slate-500">{vac?.title}</div>
                           <div className="text-slate-400 space-x-2 mt-0.5">
                             {cand.contacts.phone && <span>{cand.contacts.phone}</span>}
@@ -1568,22 +1577,23 @@ export default function App() {
           </div>
         )}
 
-        {dbReady && activeTab === 'docs' && activeCandidate && activeVacancy && (
-          <div className="max-w-3xl space-y-4">
-            <h2 className="text-xl font-semibold">Генератор Оффера и Плана 30-60-90 (Markdown)</h2>
-            <pre className="bg-slate-900 border border-slate-800 rounded-xl p-4 text-xs whitespace-pre-wrap font-mono text-slate-200">
-{`# ПРЕДЛОЖЕНИЕ О РАБОТЕ (JOB OFFER) и ПЛАН АДАПТАЦИИ
-Кандидат: ${activeCandidate.fullName}
-Позиция: ${activeVacancy.title} (${activeVacancy.department})
-Уровень вознаграждения: ${(activeCandidate.expectedSalary || activeVacancy.salaryMin).toLocaleString('ru-RU')} ₽ (net)
-
-## План на испытательный срок (30-60-90 дней)
-- 30 дней: Изучение архитектуры проектов, стандартов схем/кода и ТБ. Выполнение 2–3 задач с наставником.
-- 60 дней: Самостоятельное ведение выделенного модуля / узла автоматизации. Промежуточное ревью.
-- 90 дней: Сдача целевого проекта / ПСИ и закрытие испытательного срока.`}
-            </pre>
-          </div>
+        {dbReady && activeTab === 'docs' && activeCandidate && (
+          vacancies.find(v => v.id === activeCandidate.vacancyId) ? (
+            <OfferEditor key={activeCandidate.id} candidate={activeCandidate} vacancy={vacancies.find(v => v.id === activeCandidate.vacancyId)!} candidates={candidates} onSelect={setActiveCandId} onDirtyChange={setOfferDirty}
+              onSave={async draft => {
+                const saved = await db.candidates.update(activeCandidate.id, { offerDraft: draft });
+                if (!saved) throw new Error('Candidate not found');
+                setCandidates(prev => prev.map(c => c.id === activeCandidate.id ? { ...c, offerDraft: draft } : c));
+              }} />
+          ) : <p>Вакансия кандидата не найдена. Проверьте данные кандидата.</p>
         )}
+        {dossierCandidate && <CandidateDossier key={dossierCandidate.id} candidate={dossierCandidate} vacancy={vacancies.find(v => v.id === dossierCandidate.vacancyId)} labels={STAGE_LABELS} onClose={() => setDossierId(null)}
+          onSave={async (contacts, expectedSalary) => {
+            const saved = await db.candidates.update(dossierCandidate.id, { contacts, expectedSalary });
+            if (!saved) throw new Error('Candidate not found');
+            setCandidates(prev => prev.map(c => c.id === dossierCandidate.id ? { ...c, contacts, expectedSalary } : c));
+          }} />}
+
       </main>
     </div>
   );
