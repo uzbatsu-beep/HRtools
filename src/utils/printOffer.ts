@@ -1,11 +1,7 @@
 import { Candidate, OfferDraft, Vacancy } from '../db/schema';
 
-export function populateOfferDocument(doc: Document, candidate: Candidate, vacancy: Vacancy, draft: OfferDraft) {
-  doc.title = `Предложение о работе — ${candidate.fullName}`;
-  const style = doc.createElement('style');
-  style.textContent = '@page { size: A4; margin: 16mm } body { font: 14px Arial, sans-serif; color: #172033; line-height: 1.5 } h1,h2 { color: #047857 } .field { margin: 8px 0 } li { margin-bottom: 5px }';
-  doc.head.appendChild(style);
-  const add = (tag: string, value: string, parent: HTMLElement = doc.body) => {
+export function populateOfferDocument(doc: Document, candidate: Candidate, vacancy: Vacancy, draft: OfferDraft, root: HTMLElement = doc.body) {
+  const add = (tag: string, value: string, parent: HTMLElement = root) => {
     const element = doc.createElement(tag);
     element.textContent = value;
     parent.appendChild(element);
@@ -25,10 +21,20 @@ export function populateOfferDocument(doc: Document, candidate: Candidate, vacan
 }
 
 export function printOffer(candidate: Candidate, vacancy: Vacancy, draft: OfferDraft): boolean {
-  const popup = window.open('', '_blank', 'width=960,height=900');
-  if (!popup) return false;
-  populateOfferDocument(popup.document, candidate, vacancy, draft);
-  popup.focus();
-  popup.print();
-  return true;
+  if (typeof window.print !== 'function') return false;
+  document.querySelectorAll('.hrtools-offer-print').forEach(element => element.remove());
+  const root = document.createElement('section');
+  root.className = 'hrtools-offer-print';
+  populateOfferDocument(document, candidate, vacancy, draft, root);
+  document.body.appendChild(root);
+  const cleanup = () => root.remove();
+  window.addEventListener('afterprint', cleanup, { once: true });
+  try {
+    window.print();
+    return true;
+  } catch {
+    window.removeEventListener('afterprint', cleanup);
+    cleanup();
+    return false;
+  }
 }

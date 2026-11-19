@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { build } from 'esbuild';
 
 const bundle = await build({ entryPoints: ['src/utils/printOffer.ts'], bundle: true, write: false, format: 'esm', platform: 'node' });
-const { populateOfferDocument } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
+const { populateOfferDocument, printOffer } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
 
 test('offer content is rendered as text and includes independent offer terms', () => {
   const element = tag => ({ tag, textContent: '', children: [], appendChild(child) { this.children.push(child); return child; } });
@@ -17,4 +17,25 @@ test('offer content is rendered as text and includes independent offer terms', (
   assert.ok(nodes.some(n => n.textContent.includes('250 ₽ / мес. (gross)')));
   assert.ok(nodes.some(n => n.tag === 'li' && n.textContent === '<b>task</b>'));
   assert.ok(!nodes.some(n => ['script', 'img', 'b'].includes(n.tag)));
+});
+
+test('printing uses the current window and removes the print document afterward', () => {
+  const previousWindow = globalThis.window;
+  const previousDocument = globalThis.document;
+  let printed = false;
+  let afterPrint;
+  const element = tag => ({ tag, textContent: '', children: [], appendChild(child) { this.children.push(child); return child; }, remove() { this.removed = true; } });
+  const doc = { body: element('body'), createElement: element, querySelectorAll: () => [] };
+  globalThis.document = doc;
+  globalThis.window = { print() { printed = true; }, addEventListener(type, fn) { if (type === 'afterprint') afterPrint = fn; }, removeEventListener() {} };
+  const candidate = { fullName: 'Тест' };
+  const vacancy = { title: 'Роль', department: 'Отдел' };
+  const draft = { companyName: 'Компания', mentorName: '', salary: '100', salaryBasis: 'net', startDate: '2026-11-19', probationMonths: '', plan30: '', plan60: '', plan90: '' };
+  try {
+    assert.equal(printOffer(candidate, vacancy, draft), true);
+    assert.equal(printed, true);
+    assert.equal(doc.body.children[0].className, 'hrtools-offer-print');
+    afterPrint();
+    assert.equal(doc.body.children[0].removed, true);
+  } finally { globalThis.window = previousWindow; globalThis.document = previousDocument; }
 });

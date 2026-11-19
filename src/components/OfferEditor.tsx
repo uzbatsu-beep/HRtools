@@ -30,7 +30,7 @@ export function OfferEditor({ candidate, vacancy, candidates, onSelect, onSave, 
       setMessage('Для печати укажите компанию, положительный оклад и дату выхода.');
       return;
     }
-    if (!printOffer(candidate, vacancy, draft)) setMessage('Не удалось открыть окно печати. Проверьте разрешение всплывающих окон.');
+    if (!printOffer(candidate, vacancy, draft)) setMessage('Не удалось открыть системный диалог печати.');
   };
   const save = async () => {
     if ((draft.salary && (!Number.isFinite(Number(draft.salary)) || Number(draft.salary) < 0)) || (draft.probationMonths && (!Number.isFinite(Number(draft.probationMonths)) || Number(draft.probationMonths) < 0))) { setMessage('Проверьте сумму и срок испытания.'); return; }

@@ -1,6 +1,6 @@
 [package]
 name = "hrtools"
-version = "0.6.0"
+version = "1.0.0"
 description = "Local-First Offline Workstation for HR & Technical Recruiting"
 authors = ["uzbatsu-beep"]
 edition = "2021"
