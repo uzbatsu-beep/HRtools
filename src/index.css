@@ -2,10 +2,123 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  color-scheme: dark;
+  --canvas: 2 6 23;
+  --panel: 15 23 42;
+  --subtle: 30 41 59;
+  --raised: 51 65 85;
+  --line: 45 58 76;
+  --line-strong: 100 116 139;
+  --ink: 241 245 249;
+  --ink-soft: 203 213 225;
+  --muted: 163 177 197;
+  --faint: 148 163 184;
+  --on-accent: 255 255 255;
+  --accent: 52 211 153;
+  --accent-strong: 110 231 183;
+  --accent-fill: 4 120 87;
+  --accent-hover: 6 95 70;
+  --accent-tint: 16 185 129;
+  --accent-end: 45 212 191;
+  --danger: 251 113 133;
+  --danger-fill: 244 63 94;
+  --danger-tint: 136 19 55;
+  --warning: 252 211 77;
+  --warning-fill: 245 158 11;
+  --success: 110 231 183;
+  --surface-shadow: 0 2px 10px rgb(0 0 0 / 0.16);
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --canvas: 244 247 251;
+  --panel: 255 255 255;
+  --subtle: 232 238 246;
+  --raised: 222 230 240;
+  --line: 205 215 228;
+  --line-strong: 118 133 156;
+  --ink: 20 31 48;
+  --ink-soft: 41 56 77;
+  --muted: 68 84 105;
+  --faint: 80 96 118;
+  --accent: 4 107 79;
+  --accent-strong: 6 95 70;
+  --accent-end: 15 118 110;
+  --danger: 159 18 57;
+  --danger-fill: 190 18 60;
+  --danger-tint: 253 164 175;
+  --warning: 133 77 14;
+  --warning-fill: 245 158 11;
+  --success: 6 95 70;
+  --surface-shadow: 0 2px 8px rgb(30 48 75 / 0.06), 0 8px 24px rgb(30 48 75 / 0.035);
+}
+
+:root[data-palette='ocean'] {
+  --accent: 96 165 250;
+  --accent-strong: 147 197 253;
+  --accent-fill: 29 78 216;
+  --accent-hover: 30 64 175;
+  --accent-tint: 59 130 246;
+  --accent-end: 34 211 238;
+}
+
+:root[data-theme='light'][data-palette='ocean'] {
+  --accent: 29 78 216;
+  --accent-strong: 30 64 175;
+  --accent-end: 14 116 144;
+}
+
+:root[data-palette='lavender'] {
+  --accent: 167 139 250;
+  --accent-strong: 196 181 253;
+  --accent-fill: 109 40 217;
+  --accent-hover: 91 33 182;
+  --accent-tint: 139 92 246;
+  --accent-end: 192 132 252;
+}
+
+:root[data-theme='light'][data-palette='lavender'] {
+  --accent: 109 40 217;
+  --accent-strong: 91 33 182;
+  --accent-end: 126 34 206;
+}
+
+:root[data-palette='graphite'] {
+  --accent: 203 213 225;
+  --accent-strong: 226 232 240;
+  --accent-fill: 71 85 105;
+  --accent-hover: 51 65 85;
+  --accent-tint: 148 163 184;
+  --accent-end: 148 163 184;
+}
+
+:root[data-theme='light'][data-palette='graphite'] {
+  --accent: 71 85 105;
+  --accent-strong: 51 65 85;
+  --accent-end: 100 116 139;
+}
+
+body { background: rgb(var(--canvas)); color: rgb(var(--ink)); }
+
+#root ::placeholder { color: rgb(var(--faint)); opacity: 1; }
+
+#root :focus-visible {
+  outline: 2px solid rgb(var(--accent));
+  outline-offset: 2px;
+}
+
+.palette-swatch { background: #059669; }
+.palette-swatch[data-palette='ocean'] { background: #3b82f6; }
+.palette-swatch[data-palette='lavender'] { background: #8b5cf6; }
+.palette-swatch[data-palette='graphite'] { background: #64748b; }
+
 .hrtools-offer-print { display: none; }
 
 @media print {
   @page { size: A4; margin: 16mm; }
+  :root[data-theme] { color-scheme: light; }
+  body { background: white; }
   body > :not(.hrtools-offer-print) { display: none !important; }
   body > .hrtools-offer-print {
     display: block;

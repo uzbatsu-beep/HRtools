@@ -14,6 +14,7 @@ import { DEFAULT_LLM_CONFIG, analyzeCandidateWithLocalLlm } from './utils/localL
 import { filterCandidates, transitionCandidate } from './utils/candidateStages';
 import { CandidateDossier } from './components/CandidateDossier';
 import { OfferEditor } from './components/OfferEditor';
+import { AppearanceSettings } from './components/AppearanceSettings';
 import { 
   getDaysInCurrentStage, 
   calculateWeightedScore, 
@@ -479,13 +480,13 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex font-sans">
-      <aside className="w-64 bg-slate-900 border-r border-slate-800 flex flex-col justify-between p-4">
+    <div className="min-h-screen bg-canvas text-ink flex font-sans">
+      <aside className="w-64 shrink-0 bg-panel border-r border-line flex flex-col justify-between gap-6 p-4">
         <div>
           <div className="mb-6 px-2">
-            <h1 className="text-lg font-bold tracking-tight text-emerald-400">HRtools</h1>
-            <div className="flex items-center gap-1.5 text-[11px] text-slate-400 mt-0.5">
-              <Database className="w-3 h-3 text-emerald-400" />
+            <h1 className="text-lg font-bold tracking-tight text-accent">HRtools</h1>
+            <div className="flex items-center gap-1.5 text-[11px] text-muted mt-0.5">
+              <Database className="w-3 h-3 text-accent" />
               <span>v1.0.1 • IndexedDB ({candidates.length})</span>
             </div>
           </div>
@@ -510,8 +511,8 @@ export default function App() {
                   }}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${
                     activeTab === item.id 
-                      ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30' 
-                      : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+                      ? 'bg-accent-tint/15 text-accent-strong border border-accent/30'
+                      : 'text-muted hover:bg-subtle hover:text-ink'
                   }`}
                 >
                   <Icon className="w-4 h-4" />
@@ -521,28 +522,30 @@ export default function App() {
             })}
           </nav>
 
-          <div className="mt-6 p-3 bg-slate-950 border border-slate-800 rounded-lg space-y-2">
-            <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-400">
+          <AppearanceSettings />
+
+          <div className="mt-6 p-3 bg-canvas border border-line rounded-lg space-y-2">
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-accent">
               <Cpu className="w-3.5 h-3.5" /> Локальная LLM (Офлайн)
             </div>
             <div>
-              <label className="text-[10px] text-slate-400">Endpoint (LM Studio / Ollama)</label>
+              <label className="text-[10px] text-muted">Endpoint (LM Studio / Ollama)</label>
               <input
                 value={llmEndpoint}
                 onChange={e => saveLlmSettings(e.target.value, llmModel)}
-                className="w-full mt-0.5 bg-slate-900 border border-slate-800 rounded px-2 py-1 text-[11px]"
+                className="w-full mt-0.5 bg-panel border border-line rounded px-2 py-1 text-[11px]"
               />
             </div>
             <div className="flex gap-1">
               <button
                 onClick={() => saveLlmSettings('http://localhost:1234/v1/chat/completions', 'local-model')}
-                className="flex-1 py-1 bg-slate-800 hover:bg-slate-700 rounded text-[10px] text-slate-300"
+                className="flex-1 py-1 bg-subtle hover:bg-raised rounded text-[10px] text-ink-soft"
               >
                 LM Studio :1234
               </button>
               <button
                 onClick={() => saveLlmSettings('http://localhost:11434/v1/chat/completions', 'qwen2.5:7b')}
-                className="flex-1 py-1 bg-slate-800 hover:bg-slate-700 rounded text-[10px] text-slate-300"
+                className="flex-1 py-1 bg-subtle hover:bg-raised rounded text-[10px] text-ink-soft"
               >
                 Ollama :11434
               </button>
@@ -550,16 +553,16 @@ export default function App() {
           </div>
         </div>
 
-        <div className="border-t border-slate-800 pt-4 space-y-2">
+        <div className="border-t border-line pt-4 space-y-2">
           <button
             onClick={() => exportCandidatesToCsv(candidates, vacancies, STAGE_LABELS)}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 rounded text-xs font-medium text-emerald-300"
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-accent-fill/20 hover:bg-accent-fill/30 border border-accent/30 rounded text-xs font-medium text-accent-strong"
           >
             <FileSpreadsheet className="w-3.5 h-3.5" /> Выгрузить базу в CSV
           </button>
           <button
             onClick={exportDatabase}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-slate-800 hover:bg-slate-700 rounded text-xs font-medium text-slate-200"
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-subtle hover:bg-raised rounded text-xs font-medium text-ink"
           >
             <Download className="w-3.5 h-3.5" /> Экспорт IndexedDB
           </button>
@@ -572,16 +575,16 @@ export default function App() {
           />
           <button
             onClick={() => backupInputRef.current?.click()}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded text-xs font-medium text-slate-400"
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-panel hover:bg-subtle border border-line rounded text-xs font-medium text-muted"
           >
             <Upload className="w-3.5 h-3.5" /> Импорт базы (JSON)
           </button>
         </div>
       </aside>
 
-      <main className="flex-1 p-6 overflow-y-auto">
+      <main className="min-w-0 flex-1 p-6 overflow-y-auto">
         {!dbReady && (
-          <div className="text-xs text-slate-400 flex items-center gap-2">
+          <div className="text-xs text-muted flex items-center gap-2">
             <Loader2 className="w-4 h-4 animate-spin" /> Инициализация транзакционной базы IndexedDB...
           </div>
         )}
@@ -589,10 +592,10 @@ export default function App() {
         {/* ВКЛАДКА: СРАВНЕНИЕ КАНДИДАТОВ БОК О БОК (SIDE-BY-SIDE v0.5.0) */}
         {dbReady && activeTab === 'compare' && compareVacancy && (
           <div className="space-y-6">
-            <div className="flex items-center justify-between bg-slate-900 p-4 rounded-xl border border-slate-800">
+            <div className="shadow-surface flex items-center justify-between bg-panel p-4 rounded-xl border border-line">
               <div>
                 <h2 className="text-lg font-semibold">Сравнение финальных кандидатов (Side-by-Side Matrix)</h2>
-                <p className="text-xs text-slate-400 mt-0.5">
+                <p className="text-xs text-muted mt-0.5">
                   Сопоставление оценок по компетенциям, весов, Compa-Ratio и выводов ИИ на одном экране
                 </p>
               </div>
@@ -600,7 +603,7 @@ export default function App() {
                 <select
                   value={compareVacancy.id}
                   onChange={e => handleCompareVacancyChange(e.target.value)}
-                  className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs font-medium"
+                  className="bg-canvas border border-line-strong rounded-lg px-3 py-2 text-xs font-medium"
                 >
                   {vacancies.map(v => (
                     <option key={v.id} value={v.id}>Вакансия: {v.title}</option>
@@ -609,7 +612,7 @@ export default function App() {
                 <button
                   onClick={() => exportComparisonMatrixToCsv(compareVacancy, comparedCandidates, STAGE_LABELS)}
                   disabled={comparedCandidates.length === 0}
-                  className="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white rounded-lg text-xs font-medium flex items-center gap-1.5"
+                  className="px-3 py-2 bg-accent-fill hover:bg-accent-hover disabled:opacity-40 text-on-accent rounded-lg text-xs font-medium flex items-center gap-1.5"
                 >
                   <FileSpreadsheet className="w-4 h-4" /> Экспорт матрицы в CSV
                 </button>
@@ -617,8 +620,8 @@ export default function App() {
             </div>
 
             {/* Выбор кандидатов для сравнения (чекбоксы-чипы) */}
-            <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-2">
-              <div className="text-xs text-slate-400">
+            <div className="shadow-surface bg-panel border border-line rounded-xl p-4 space-y-2">
+              <div className="text-xs text-muted">
                 Выберите до 4 кандидатов по вакансии «{compareVacancy.title}» для сопоставления:
               </div>
               <div className="flex flex-wrap gap-2">
@@ -631,38 +634,38 @@ export default function App() {
                       onClick={() => toggleCandidateInComparison(c.id)}
                       className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition flex items-center gap-2 ${
                         isSelected
-                          ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300'
-                          : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+                          ? 'bg-accent-tint/20 border-accent/50 text-accent-strong'
+                          : 'bg-canvas border-line text-muted hover:text-ink'
                       }`}
                     >
                       <span>{c.fullName}</span>
-                      <span className="px-1.5 py-0.5 bg-slate-900 rounded text-[10px]">
+                      <span className="px-1.5 py-0.5 bg-panel rounded text-[10px]">
                         {wScore > 0 ? `${wScore} ★` : STAGE_LABELS[c.stage]}
                       </span>
                     </button>
                   );
                 })}
                 {vacancyCandidatesPool.length === 0 && (
-                  <span className="text-xs text-slate-500">На этой вакансии пока нет кандидатов.</span>
+                  <span className="text-xs text-faint">На этой вакансии пока нет кандидатов.</span>
                 )}
               </div>
             </div>
 
             {/* Таблица Side-by-Side */}
             {comparedCandidates.length > 0 && (
-              <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-x-auto">
+              <div className="shadow-surface bg-panel border border-line rounded-xl overflow-x-auto">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
-                    <tr className="bg-slate-950 border-b border-slate-800">
-                      <th className="p-3.5 w-64 text-slate-400 font-medium">Критерий / Компетенция</th>
+                    <tr className="bg-canvas border-b border-line">
+                      <th className="p-3.5 w-64 text-muted font-medium">Критерий / Компетенция</th>
                       {comparedCandidates.map(cand => {
                         return (
-                          <th key={cand.id} className="p-3.5 border-l border-slate-800 min-w-[230px]">
+                          <th key={cand.id} className="p-3.5 border-l border-line min-w-[230px]">
                             <div className="flex items-center justify-between">
-                              <span className="text-sm font-bold text-slate-100">{cand.fullName}</span>
+                              <span className="text-sm font-bold text-ink">{cand.fullName}</span>
 
                             </div>
-                            <div className="text-[11px] text-slate-400 font-normal mt-0.5">
+                            <div className="text-[11px] text-muted font-normal mt-0.5">
                               {STAGE_LABELS[cand.stage]} • {getDaysInCurrentStage(cand)} дн. на этапе
                             </div>
                           </th>
@@ -670,15 +673,15 @@ export default function App() {
                       })}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-800">
+                  <tbody className="divide-y divide-line">
                     {/* Строка: Итоговый средневзвешенный балл */}
-                    <tr className="bg-slate-950/60">
-                      <td className="p-3 font-semibold text-emerald-400">Средневзвешенный балл (STAR)</td>
+                    <tr className="bg-canvas/60">
+                      <td className="p-3 font-semibold text-accent">Средневзвешенный балл (STAR)</td>
                       {comparedCandidates.map(cand => {
                         const score = calculateWeightedScore(compareVacancy.competencies, cand.scores);
                         return (
-                          <td key={cand.id} className="p-3 border-l border-slate-800">
-                            <span className="text-base font-bold text-emerald-400">
+                          <td key={cand.id} className="p-3 border-l border-line">
+                            <span className="text-base font-bold text-accent">
                               {score > 0 ? `${score} / 5.0 (${compareVacancy.competencies.filter(comp => cand.scores[comp.id]?.score > 0).length}/${compareVacancy.competencies.length} оценено)` : 'Не оценен'}
                             </span>
                           </td>
@@ -689,8 +692,8 @@ export default function App() {
                     {/* Строка: Зарплатные ожидания и Compa-Ratio */}
                     <tr>
                       <td className="p-3">
-                        <div className="font-medium text-slate-200">Ожидания по ЗП и Compa-Ratio</div>
-                        <div className="text-[11px] text-slate-500">
+                        <div className="font-medium text-ink">Ожидания по ЗП и Compa-Ratio</div>
+                        <div className="text-[11px] text-faint">
                           Вилка: {compareVacancy.salaryMin.toLocaleString('ru-RU')} – {compareVacancy.salaryMax.toLocaleString('ru-RU')} ₽
                         </div>
                       </td>
@@ -699,14 +702,14 @@ export default function App() {
                           ? calculateCompaRatio(cand.expectedSalary, compareVacancy.salaryMin, compareVacancy.salaryMax)
                           : null;
                         return (
-                          <td key={cand.id} className="p-3 border-l border-slate-800">
+                          <td key={cand.id} className="p-3 border-l border-line">
                             {cand.expectedSalary ? (
                               <div>
-                                <div className="font-semibold text-slate-100">
+                                <div className="font-semibold text-ink">
                                   {cand.expectedSalary.toLocaleString('ru-RU')} ₽
                                 </div>
                                 {cr && (
-                                  <div className={`text-[11px] mt-0.5 ${cr.ratio > 115 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                                  <div className={`text-[11px] mt-0.5 ${cr.ratio > 115 ? 'text-danger' : 'text-accent'}`}>
                                     CR: {cr.ratio}% • {cr.zone}
                                   </div>
                                 )}
@@ -719,14 +722,14 @@ export default function App() {
 
                     {/* Строки по каждой компетенции матрицы */}
                     {compareVacancy.competencies.map(comp => (
-                      <tr key={comp.id} className="hover:bg-slate-800/30">
+                      <tr key={comp.id} className="hover:bg-subtle/30">
                         <td className="p-3">
-                          <div className="font-medium text-slate-200">{comp.name}</div>
+                          <div className="font-medium text-ink">{comp.name}</div>
                           <div className="flex items-center gap-1.5 mt-1">
-                            <span className="px-1.5 py-0.5 bg-slate-800 text-emerald-300 rounded text-[10px]">
+                            <span className="px-1.5 py-0.5 bg-subtle text-accent-strong rounded text-[10px]">
                               Вес x{comp.weight}
                             </span>
-                            <span className="px-1.5 py-0.5 bg-slate-800 text-slate-400 rounded text-[10px] uppercase">
+                            <span className="px-1.5 py-0.5 bg-subtle text-muted rounded text-[10px] uppercase">
                               {comp.category}
                             </span>
                           </div>
@@ -734,18 +737,18 @@ export default function App() {
                         {comparedCandidates.map(cand => {
                           const entry = cand.scores[comp.id];
                           return (
-                            <td key={cand.id} className="p-3 border-l border-slate-800 align-top">
+                            <td key={cand.id} className="p-3 border-l border-line align-top">
                               {entry && entry.score > 0 ? (
                                 <div>
-                                  <div className="inline-block px-2 py-0.5 rounded font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                                  <div className="inline-block px-2 py-0.5 rounded font-bold bg-accent-tint/20 text-accent-strong border border-accent/30">
                                     {entry.score} / 5
                                   </div>
                                   {entry.note && (
-                                    <p className="text-[11px] text-slate-300 mt-1.5 italic">«{entry.note}»</p>
+                                    <p className="text-[11px] text-ink-soft mt-1.5 italic">«{entry.note}»</p>
                                   )}
                                 </div>
                               ) : (
-                                <span className="text-slate-500">—</span>
+                                <span className="text-faint">—</span>
                               )}
                             </td>
                           );
@@ -755,12 +758,12 @@ export default function App() {
 
                     {/* Строка: Технологический стек */}
                     <tr>
-                      <td className="p-3 font-medium text-slate-300">Распознанный стек</td>
+                      <td className="p-3 font-medium text-ink-soft">Распознанный стек</td>
                       {comparedCandidates.map(cand => (
-                        <td key={cand.id} className="p-3 border-l border-slate-800">
+                        <td key={cand.id} className="p-3 border-l border-line">
                           <div className="flex flex-wrap gap-1">
                             {cand.skills.map(s => (
-                              <span key={s} className="px-1.5 py-0.5 bg-slate-800 rounded text-[10px]">{s}</span>
+                              <span key={s} className="px-1.5 py-0.5 bg-subtle rounded text-[10px]">{s}</span>
                             ))}
                           </div>
                         </td>
@@ -769,13 +772,13 @@ export default function App() {
 
                     {/* Строка: Вывод локальной LLM */}
                     <tr>
-                      <td className="p-3 font-medium text-slate-300">AI-заключение (LM Studio / Ollama)</td>
+                      <td className="p-3 font-medium text-ink-soft">AI-заключение (LM Studio / Ollama)</td>
                       {comparedCandidates.map(cand => (
-                        <td key={cand.id} className="p-3 border-l border-slate-800 align-top">
+                        <td key={cand.id} className="p-3 border-l border-line align-top">
                           {cand.aiSummary ? (
-                            <div className="text-[11px] text-slate-300 whitespace-pre-wrap">{cand.aiSummary}</div>
+                            <div className="text-[11px] text-ink-soft whitespace-pre-wrap">{cand.aiSummary}</div>
                           ) : (
-                            <span className="text-slate-500 text-[11px]">Нет AI-разбора</span>
+                            <span className="text-faint text-[11px]">Нет AI-разбора</span>
                           )}
                         </td>
                       ))}
@@ -793,13 +796,13 @@ export default function App() {
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-xl font-semibold">Конструктор вакансий и матриц компетенций</h2>
-                <p className="text-xs text-slate-400 mt-0.5">
+                <p className="text-xs text-muted mt-0.5">
                   Настройте зарплатные вилки для расчета Compa-Ratio и весовые критерии для скоркарт STAR
                 </p>
               </div>
               <button
                 onClick={handleCreateVacancy}
-                className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium px-3.5 py-2 rounded-lg flex items-center gap-1.5"
+                className="bg-accent-fill hover:bg-accent-hover text-on-accent text-xs font-medium px-3.5 py-2 rounded-lg flex items-center gap-1.5"
               >
                 <Plus className="w-4 h-4" /> Создать вакансию
               </button>
@@ -813,8 +816,8 @@ export default function App() {
                   onClick={() => setEditingVacancyId(v.id)}
                   className={`px-3 py-2 rounded-lg text-xs font-medium border transition ${
                     v.id === currentEditingVacancy.id
-                      ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
-                      : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                      ? 'bg-accent-tint/15 border-accent/40 text-accent-strong'
+                      : 'bg-panel border-line text-muted hover:text-ink'
                   }`}
                 >
                   {v.title} ({v.competencies.length} комп.)
@@ -822,61 +825,61 @@ export default function App() {
               ))}
             </div>
 
-            <div className="grid grid-cols-4 gap-4 bg-slate-900 p-4 rounded-xl border border-slate-800">
+            <div className="shadow-surface grid grid-cols-4 gap-4 bg-panel p-4 rounded-xl border border-line">
               <div className="col-span-2">
-                <label className="text-xs text-slate-400">Название должности</label>
+                <label className="text-xs text-muted">Название должности</label>
                 <input
                   value={currentEditingVacancy.title}
                   onChange={e => handleUpdateVacancyField({ title: e.target.value })}
-                  className="w-full mt-1 bg-slate-950 border border-slate-800 rounded p-2 text-sm font-medium"
+                  className="w-full mt-1 bg-canvas border border-line rounded p-2 text-sm font-medium"
                 />
               </div>
               <div className="col-span-2">
-                <label className="text-xs text-slate-400">Департамент / Цех / Отдел</label>
+                <label className="text-xs text-muted">Департамент / Цех / Отдел</label>
                 <input
                   value={currentEditingVacancy.department}
                   onChange={e => handleUpdateVacancyField({ department: e.target.value })}
-                  className="w-full mt-1 bg-slate-950 border border-slate-800 rounded p-2 text-sm"
+                  className="w-full mt-1 bg-canvas border border-line rounded p-2 text-sm"
                 />
               </div>
               <div>
-                <label className="text-xs text-slate-400">Мин. вилка грейда (₽)</label>
+                <label className="text-xs text-muted">Мин. вилка грейда (₽)</label>
                 <input
                   type="number"
                   value={currentEditingVacancy.salaryMin}
                   onChange={e => handleUpdateVacancyField({ salaryMin: Number(e.target.value) })}
-                  className="w-full mt-1 bg-slate-950 border border-slate-800 rounded p-2 text-sm"
+                  className="w-full mt-1 bg-canvas border border-line rounded p-2 text-sm"
                 />
               </div>
               <div>
-                <label className="text-xs text-slate-400">Макс. вилка грейда (₽)</label>
+                <label className="text-xs text-muted">Макс. вилка грейда (₽)</label>
                 <input
                   type="number"
                   value={currentEditingVacancy.salaryMax}
                   onChange={e => handleUpdateVacancyField({ salaryMax: Number(e.target.value) })}
-                  className="w-full mt-1 bg-slate-950 border border-slate-800 rounded p-2 text-sm"
+                  className="w-full mt-1 bg-canvas border border-line rounded p-2 text-sm"
                 />
               </div>
               <div>
-                <label className="text-xs text-slate-400">Медиана грейда (100% CR)</label>
-                <div className="mt-1 bg-slate-950 border border-slate-800 rounded p-2 text-sm text-emerald-400 font-semibold">
+                <label className="text-xs text-muted">Медиана грейда (100% CR)</label>
+                <div className="mt-1 bg-canvas border border-line rounded p-2 text-sm text-accent font-semibold">
                   {Math.round((currentEditingVacancy.salaryMin + currentEditingVacancy.salaryMax) / 2).toLocaleString('ru-RU')} ₽
                 </div>
               </div>
               <div>
-                <label className="text-xs text-slate-400">Дата открытия заявки</label>
+                <label className="text-xs text-muted">Дата открытия заявки</label>
                 <input
                   type="date"
                   value={currentEditingVacancy.openedAt}
                   onChange={e => handleUpdateVacancyField({ openedAt: e.target.value })}
-                  className="w-full mt-1 bg-slate-950 border border-slate-800 rounded p-2 text-sm"
+                  className="w-full mt-1 bg-canvas border border-line rounded p-2 text-sm"
                 />
               </div>
             </div>
 
             {/* Список компетенций вакансии */}
-            <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-4">
-              <h3 className="text-sm font-semibold text-emerald-400">
+            <div className="shadow-surface bg-panel border border-line rounded-xl p-4 space-y-4">
+              <h3 className="text-sm font-semibold text-accent">
                 Матрица оценки для интервью ({currentEditingVacancy.competencies.length})
               </h3>
 
@@ -884,23 +887,23 @@ export default function App() {
                 {currentEditingVacancy.competencies.map(comp => (
                   <div
                     key={comp.id}
-                    className="flex items-start justify-between gap-4 bg-slate-950 border border-slate-800 rounded-lg p-3"
+                    className="flex items-start justify-between gap-4 bg-canvas border border-line rounded-lg p-3"
                   >
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-semibold text-slate-100">{comp.name}</span>
-                        <span className="px-2 py-0.5 bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 rounded text-[10px]">
+                        <span className="text-xs font-semibold text-ink">{comp.name}</span>
+                        <span className="px-2 py-0.5 bg-accent-tint/15 text-accent-strong border border-accent/30 rounded text-[10px]">
                           Вес x{comp.weight}
                         </span>
-                        <span className="px-2 py-0.5 bg-slate-800 text-slate-400 rounded text-[10px] uppercase">
+                        <span className="px-2 py-0.5 bg-subtle text-muted rounded text-[10px] uppercase">
                           {comp.category}
                         </span>
                       </div>
-                      <p className="text-xs text-slate-400 italic">STAR: {comp.starPrompt}</p>
+                      <p className="text-xs text-muted italic">STAR: {comp.starPrompt}</p>
                     </div>
                     <button
                       onClick={() => handleRemoveCompetency(comp.id)}
-                      className="text-slate-500 hover:text-rose-400 p-1"
+                      className="text-faint hover:text-danger p-1"
                       title="Удалить компетенцию"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -910,22 +913,22 @@ export default function App() {
               </div>
 
               {/* Форма добавления новой компетенции */}
-              <div className="border-t border-slate-800 pt-4 grid grid-cols-12 gap-3">
+              <div className="border-t border-line pt-4 grid grid-cols-12 gap-3">
                 <div className="col-span-5">
-                  <label className="text-[11px] text-slate-400">Название компетенции / навыка</label>
+                  <label className="text-[11px] text-muted">Название компетенции / навыка</label>
                   <input
                     value={newCompName}
                     onChange={e => setNewCompName(e.target.value)}
                     placeholder="Напр.: Проектирование контуров ПАЗ / Архитектура БД"
-                    className="w-full mt-1 bg-slate-950 border border-slate-800 rounded p-2 text-xs"
+                    className="w-full mt-1 bg-canvas border border-line rounded p-2 text-xs"
                   />
                 </div>
                 <div className="col-span-2">
-                  <label className="text-[11px] text-slate-400">Вес (1–3)</label>
+                  <label className="text-[11px] text-muted">Вес (1–3)</label>
                   <select
                     value={newCompWeight}
                     onChange={e => setNewCompWeight(Number(e.target.value) as 1 | 2 | 3)}
-                    className="w-full mt-1 bg-slate-950 border border-slate-800 rounded p-2 text-xs"
+                    className="w-full mt-1 bg-canvas border border-line rounded p-2 text-xs"
                   >
                     <option value={1}>x1 (Базовый)</option>
                     <option value={2}>x2 (Важный)</option>
@@ -933,11 +936,11 @@ export default function App() {
                   </select>
                 </div>
                 <div className="col-span-2">
-                  <label className="text-[11px] text-slate-400">Тип</label>
+                  <label className="text-[11px] text-muted">Тип</label>
                   <select
                     value={newCompCategory}
                     onChange={e => setNewCompCategory(e.target.value as 'hard' | 'soft')}
-                    className="w-full mt-1 bg-slate-950 border border-slate-800 rounded p-2 text-xs"
+                    className="w-full mt-1 bg-canvas border border-line rounded p-2 text-xs"
                   >
                     <option value="hard">Hard Skill</option>
                     <option value="soft">Soft Skill</option>
@@ -946,7 +949,7 @@ export default function App() {
                 <div className="col-span-3 flex items-end">
                   <button
                     onClick={handleAddCompetency}
-                    className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs py-2 px-3 rounded flex items-center justify-center gap-1"
+                    className="w-full bg-accent-fill hover:bg-accent-hover text-on-accent font-medium text-xs py-2 px-3 rounded flex items-center justify-center gap-1"
                   >
                     <Plus className="w-3.5 h-3.5" /> Добавить в матрицу
                   </button>
@@ -956,7 +959,7 @@ export default function App() {
                     value={newCompPrompt}
                     onChange={e => setNewCompPrompt(e.target.value)}
                     placeholder="Поведенческий вопрос по методу STAR (что именно спросить на собеседовании для проверки навыка)..."
-                    className="w-full bg-slate-950 border border-slate-800 rounded p-2 text-xs"
+                    className="w-full bg-canvas border border-line rounded p-2 text-xs"
                   />
                 </div>
               </div>
@@ -974,7 +977,7 @@ export default function App() {
                   <button
                     key={p.id}
                     onClick={() => applyPreset(p.id)}
-                    className="px-3 py-1.5 text-xs bg-slate-800 hover:bg-emerald-600/20 hover:text-emerald-300 border border-slate-700 rounded"
+                    className="px-3 py-1.5 text-xs bg-subtle hover:bg-accent-fill/20 hover:text-accent-strong border border-line-strong rounded"
                   >
                     {p.name}
                   </button>
@@ -982,22 +985,22 @@ export default function App() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 bg-slate-900 p-4 rounded-xl border border-slate-800">
+            <div className="shadow-surface grid grid-cols-2 gap-4 bg-panel p-4 rounded-xl border border-line">
               <div>
-                <label className="text-xs text-slate-400">Должности (через запятую → OR)</label>
-                <input value={bTitles} onChange={e => setBTitles(e.target.value)} className="w-full mt-1 bg-slate-950 border border-slate-800 rounded p-2 text-sm" />
+                <label className="text-xs text-muted">Должности (через запятую → OR)</label>
+                <input value={bTitles} onChange={e => setBTitles(e.target.value)} className="w-full mt-1 bg-canvas border border-line rounded p-2 text-sm" />
               </div>
               <div>
-                <label className="text-xs text-slate-400">Обязательный стек (через запятую → AND)</label>
-                <input value={bMust} onChange={e => setBMust(e.target.value)} className="w-full mt-1 bg-slate-950 border border-slate-800 rounded p-2 text-sm" />
+                <label className="text-xs text-muted">Обязательный стек (через запятую → AND)</label>
+                <input value={bMust} onChange={e => setBMust(e.target.value)} className="w-full mt-1 bg-canvas border border-line rounded p-2 text-sm" />
               </div>
               <div>
-                <label className="text-xs text-slate-400">Синонимы и смежные технологии (OR)</label>
-                <input value={bAlt} onChange={e => setBAlt(e.target.value)} className="w-full mt-1 bg-slate-950 border border-slate-800 rounded p-2 text-sm" />
+                <label className="text-xs text-muted">Синонимы и смежные технологии (OR)</label>
+                <input value={bAlt} onChange={e => setBAlt(e.target.value)} className="w-full mt-1 bg-canvas border border-line rounded p-2 text-sm" />
               </div>
               <div>
-                <label className="text-xs text-slate-400">Исключить слова (NOT)</label>
-                <input value={bNot} onChange={e => setBNot(e.target.value)} className="w-full mt-1 bg-slate-950 border border-slate-800 rounded p-2 text-sm" />
+                <label className="text-xs text-muted">Исключить слова (NOT)</label>
+                <input value={bNot} onChange={e => setBNot(e.target.value)} className="w-full mt-1 bg-canvas border border-line rounded p-2 text-sm" />
               </div>
             </div>
 
@@ -1008,17 +1011,17 @@ export default function App() {
                 { label: 'Google X-Ray: GitHub профили', val: booleanQueries.githubXray },
                 { label: 'Прямой поиск PDF-резюме в сети', val: booleanQueries.pdfResumes }
               ].map((q, idx) => (
-                <div key={idx} className="bg-slate-900 border border-slate-800 rounded-lg p-3">
+                <div key={idx} className="bg-panel border border-line rounded-lg p-3">
                   <div className="flex justify-between items-center mb-1">
-                    <span className="text-xs font-medium text-emerald-400">{q.label}</span>
+                    <span className="text-xs font-medium text-accent">{q.label}</span>
                     <button
                       onClick={() => navigator.clipboard.writeText(q.val)}
-                      className="text-xs flex items-center gap-1 text-slate-400 hover:text-white"
+                      className="text-xs flex items-center gap-1 text-muted hover:text-ink"
                     >
                       <Copy className="w-3 h-3" /> Копировать
                     </button>
                   </div>
-                  <code className="text-xs text-slate-200 break-all">{q.val}</code>
+                  <code className="text-xs text-ink break-all">{q.val}</code>
                 </div>
               ))}
             </div>
@@ -1035,8 +1038,8 @@ export default function App() {
                 onClick={() => fileInputRef.current?.click()}
                 className={`col-span-5 border-2 border-dashed rounded-xl p-4 flex flex-col items-center justify-center text-center cursor-pointer transition ${
                   isDragging 
-                    ? 'border-emerald-400 bg-emerald-500/10' 
-                    : 'border-slate-800 bg-slate-900 hover:border-slate-700'
+                    ? 'border-accent bg-accent-tint/10'
+                    : 'border-line bg-panel hover:border-line-strong'
                 }`}
               >
                 <input
@@ -1048,32 +1051,32 @@ export default function App() {
                   className="hidden"
                 />
                 {isProcessingFile ? (
-                  <Loader2 className="w-8 h-8 text-emerald-400 animate-spin mb-2" />
+                  <Loader2 className="w-8 h-8 text-accent animate-spin mb-2" />
                 ) : (
-                  <FileUp className="w-8 h-8 text-emerald-400 mb-2" />
+                  <FileUp className="w-8 h-8 text-accent mb-2" />
                 )}
-                <div className="text-xs font-semibold text-slate-200">
+                <div className="text-xs font-semibold text-ink">
                   Перетащите PDF, DOCX или TXT резюме сюда
                 </div>
-                <p className="text-[11px] text-slate-400 mt-1">
+                <p className="text-[11px] text-muted mt-1">
                   Прямая запись в IndexedDB (без лимита 5 МБ)
                 </p>
                 {uploadStatus && (
-                  <div className="mt-2 flex items-center gap-1 text-[11px] text-emerald-400">
+                  <div className="mt-2 flex items-center gap-1 text-[11px] text-accent">
                     <CheckCircle2 className="w-3.5 h-3.5" /> {uploadStatus}
                   </div>
                 )}
               </div>
 
-              <div className="col-span-7 bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col justify-between">
+              <div className="shadow-surface col-span-7 bg-panel border border-line rounded-xl p-4 flex flex-col justify-between">
                 <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-xs font-semibold text-emerald-400">
+                  <h3 className="text-xs font-semibold text-accent">
                     Или вставьте скопированный текст резюме
                   </h3>
                   <select
                     value={selectedVacancyId}
                     onChange={e => setSelectedVacancyId(e.target.value)}
-                    className="bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs"
+                    className="bg-canvas border border-line rounded px-2 py-1 text-xs"
                   >
                     {vacancies.map(v => <option key={v.id} value={v.id}>Вакансия: {v.title}</option>)}
                   </select>
@@ -1082,21 +1085,21 @@ export default function App() {
                   value={rawCvInput}
                   onChange={e => setRawCvInput(e.target.value)}
                   placeholder="ФИО, телефон, email, @telegram, желаемая ЗП и стек сохраняются в IndexedDB..."
-                  className="w-full bg-slate-950 border border-slate-800 rounded p-2 text-xs h-20 mb-2"
+                  className="w-full bg-canvas border border-line rounded p-2 text-xs h-20 mb-2"
                 />
                 <button
                   onClick={handleParseAndAddCandidate}
-                  className="bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs py-2 px-4 rounded flex items-center justify-center gap-1.5 self-end"
+                  className="bg-accent-fill hover:bg-accent-hover text-on-accent font-medium text-xs py-2 px-4 rounded flex items-center justify-center gap-1.5 self-end"
                 >
                   <Plus className="w-4 h-4" /> Сохранить в IndexedDB
                 </button>
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-3 bg-slate-900 p-3 rounded-xl border border-slate-800">
-              <button type="button" onClick={() => setAtsViewMode('kanban')} aria-pressed={atsViewMode === 'kanban'} className="px-3 py-1 rounded bg-slate-800 text-xs">Канбан</button>
-              <button type="button" onClick={() => setAtsViewMode('table')} aria-pressed={atsViewMode === 'table'} className="px-3 py-1 rounded bg-slate-800 text-xs">Таблица</button>
-              <select aria-label="Фильтр по вакансии" value={vacancyFilter} onChange={e => setVacancyFilter(e.target.value)} className="bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-xs">
+            <div className="shadow-surface flex flex-wrap gap-3 bg-panel p-3 rounded-xl border border-line">
+              <button type="button" onClick={() => setAtsViewMode('kanban')} aria-pressed={atsViewMode === 'kanban'} className="px-3 py-1 rounded bg-subtle text-xs">Канбан</button>
+              <button type="button" onClick={() => setAtsViewMode('table')} aria-pressed={atsViewMode === 'table'} className="px-3 py-1 rounded bg-subtle text-xs">Таблица</button>
+              <select aria-label="Фильтр по вакансии" value={vacancyFilter} onChange={e => setVacancyFilter(e.target.value)} className="bg-canvas border border-line rounded px-3 py-1.5 text-xs">
                 <option value="all">Все вакансии</option>
                 {vacancies.map(v => <option key={v.id} value={v.id}>{v.title}</option>)}
               </select>
@@ -1104,19 +1107,19 @@ export default function App() {
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 placeholder="Полнотекстовый поиск по IndexedDB (имя, стек CODESYS / Python, слова внутри PDF резюме)..."
-                className="flex-1 bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-xs"
+                className="flex-1 bg-canvas border border-line rounded px-3 py-1.5 text-xs"
               />
               <select
                 value={stageFilter}
                 onChange={e => setStageFilter(e.target.value)}
-                className="bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-xs"
+                className="bg-canvas border border-line rounded px-3 py-1.5 text-xs"
               >
                 <option value="all">Все этапы ({candidates.length})</option>
                 {Object.entries(STAGE_LABELS).map(([k, label]) => (
                   <option key={k} value={k}>{label}</option>
                 ))}
               </select>
-              <button onClick={() => exportCandidatesToCsv(filteredCandidates, vacancies, STAGE_LABELS)} className="px-3 py-1.5 bg-slate-800 text-emerald-300 rounded text-xs shrink-0">CSV ({filteredCandidates.length})</button>
+              <button onClick={() => exportCandidatesToCsv(filteredCandidates, vacancies, STAGE_LABELS)} className="px-3 py-1.5 bg-subtle text-accent-strong rounded text-xs shrink-0">CSV ({filteredCandidates.length})</button>
             </div>
 
             {atsViewMode === 'kanban' && (
@@ -1137,23 +1140,23 @@ export default function App() {
                       onDrop={e => handleKanbanDropOnStage(e, stageKey)}
                       className={`w-72 shrink-0 rounded-xl border p-3 flex flex-col justify-between transition ${
                         isDragTarget
-                          ? 'bg-emerald-950/30 border-emerald-400'
-                          : 'bg-slate-900/90 border-slate-800'
+                          ? 'bg-accent-tint/30 border-accent'
+                          : 'bg-panel/90 border-line'
                       }`}
                     >
                       <div>
                         {/* Шапка колонки */}
-                        <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-800">
+                        <div className="flex items-center justify-between mb-3 pb-2 border-b border-line">
                           <span className={`text-xs font-bold ${
                             stageKey === 'rejected'
-                              ? 'text-rose-400'
+                              ? 'text-danger'
                               : stageKey === 'hired'
-                              ? 'text-emerald-400'
-                              : 'text-slate-200'
+                              ? 'text-success'
+                              : 'text-ink'
                           }`}>
                             {STAGE_LABELS[stageKey]}
                           </span>
-                          <span className="px-2 py-0.5 bg-slate-950 border border-slate-800 rounded-full text-[11px] font-semibold text-slate-300">
+                          <span className="px-2 py-0.5 bg-canvas border border-line rounded-full text-[11px] font-semibold text-ink-soft">
                             {stageCandidates.length}
                           </span>
                         </div>
@@ -1177,41 +1180,41 @@ export default function App() {
                                   setDraggedCandId(null);
                                   setDragOverStage(null);
                                 }}
-                                className={`bg-slate-950 border rounded-lg p-3 cursor-grab active:cursor-grabbing hover:border-slate-600 transition space-y-2 ${
+                                className={`bg-canvas border rounded-lg p-3 cursor-grab active:cursor-grabbing hover:border-line-strong transition space-y-2 ${
                                   draggedCandId === cand.id
-                                    ? 'opacity-40 border-emerald-400'
-                                    : 'border-slate-800'
+                                    ? 'opacity-40 border-accent'
+                                    : 'border-line'
                                 }`}
                               >
                                 <div className="flex items-start justify-between gap-2">
                                   <div>
-                                    <div className="text-xs font-bold text-slate-100 leading-snug">
+                                    <div className="text-xs font-bold text-ink leading-snug">
                                       <button type="button" onClick={() => setDossierId(cand.id)} className="text-left underline">{cand.fullName}</button>
                                     </div>
-                                    <div className="text-[10px] text-slate-400 mt-0.5">
+                                    <div className="text-[10px] text-muted mt-0.5">
                                       {vac?.title || 'Вакансия'}
                                     </div>
                                   </div>
-                                  <GripVertical className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+                                  <GripVertical className="w-3.5 h-3.5 text-faint shrink-0" />
                                 </div>
 
                                 {/* Бейджи метрик: Балл STAR, Compa-Ratio и Дни на этапе */}
                                 <div className="flex flex-wrap items-center gap-1.5">
                                   {wScore > 0 && (
-                                    <span className="px-1.5 py-0.5 bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 rounded text-[10px] font-semibold">
+                                    <span className="px-1.5 py-0.5 bg-accent-tint/15 text-accent-strong border border-accent/30 rounded text-[10px] font-semibold">
                                       ★ {wScore}
                                     </span>
                                   )}
                                   {cand.expectedSalary && (
-                                    <span className="px-1.5 py-0.5 bg-slate-900 border border-slate-800 rounded text-[10px] text-slate-200">
+                                    <span className="px-1.5 py-0.5 bg-panel border border-line rounded text-[10px] text-ink">
                                       {cand.expectedSalary.toLocaleString('ru-RU')} ₽
                                       {compa ? ` (${compa.ratio}%)` : ''}
                                     </span>
                                   )}
                                   <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
                                     days > 7
-                                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                                      : 'bg-slate-900 text-slate-400'
+                                      ? 'bg-warning-fill/20 text-warning border border-warning-fill/30'
+                                      : 'bg-panel text-muted'
                                   }`}>
                                     {days} дн.
                                   </span>
@@ -1221,42 +1224,42 @@ export default function App() {
                                 {cand.skills.length > 0 && (
                                   <div className="flex flex-wrap gap-1">
                                     {cand.skills.slice(0, 5).map(skill => (
-                                      <span key={skill} className="px-1.5 py-0.5 bg-slate-900 text-slate-300 rounded text-[10px]">
+                                      <span key={skill} className="px-1.5 py-0.5 bg-panel text-ink-soft rounded text-[10px]">
                                         {skill}
                                       </span>
                                     ))}
                                     {cand.skills.length > 5 && (
-                                      <span className="text-[10px] text-slate-500">+{cand.skills.length - 5}</span>
+                                      <span className="text-[10px] text-faint">+{cand.skills.length - 5}</span>
                                     )}
                                   </div>
                                 )}
 
                                 {/* Контакты */}
-                                <div className="text-[10px] text-slate-400 flex flex-wrap gap-2">
+                                <div className="text-[10px] text-muted flex flex-wrap gap-2">
                                   {cand.contacts.telegram && (
-                                    <span className="text-emerald-400">{cand.contacts.telegram}</span>
+                                    <span className="text-accent">{cand.contacts.telegram}</span>
                                   )}
                                   {cand.contacts.phone && <span>{cand.contacts.phone}</span>}
                                 </div>
 
                                 {/* Причина отказа (если в отказе) */}
                                 {cand.rejectionReason && (
-                                  <div className="text-[10px] text-rose-400 bg-rose-950/30 border border-rose-500/20 rounded p-1.5">
+                                  <div className="text-[10px] text-danger bg-danger-tint/30 border border-danger-fill/20 rounded p-1.5">
                                     {cand.rejectionReason}
                                   </div>
                                 )}
 
-                                <label className="block text-[10px] text-slate-400">Этап кандидата
-                                  <select aria-label={`Этап: ${cand.fullName}`} value={cand.stage} onChange={e => updateCandidateStage(cand.id, e.target.value as CandidateStage)} className="block w-full bg-slate-900 border border-slate-700 rounded p-1 text-xs">
+                                <label className="block text-[10px] text-muted">Этап кандидата
+                                  <select aria-label={`Этап: ${cand.fullName}`} value={cand.stage} onChange={e => updateCandidateStage(cand.id, e.target.value as CandidateStage)} className="block w-full bg-panel border border-line-strong rounded p-1 text-xs">
                                     {Object.entries(STAGE_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
                                   </select>
                                 </label>
 
                                 {/* Быстрые действия на карточке */}
-                                <div className="pt-1.5 border-t border-slate-900 flex items-center justify-between">
+                                <div className="pt-1.5 border-t border-line flex items-center justify-between">
                                   <button
                                     onClick={() => openScorecardForCandidate(cand.id)}
-                                    className="text-[10px] text-slate-300 hover:text-emerald-300 flex items-center gap-1"
+                                    className="text-[10px] text-ink-soft hover:text-accent-strong flex items-center gap-1"
                                   >
                                     <ClipboardCheck className="w-3 h-3" /> Скоркарта
                                   </button>
@@ -1264,7 +1267,7 @@ export default function App() {
                                     <button
                                       onClick={() => runLocalAiAnalysis(cand)}
                                       disabled={aiLoadingCandId === cand.id}
-                                      className="text-[10px] text-emerald-400 hover:text-emerald-300 flex items-center gap-1"
+                                      className="text-[10px] text-accent hover:text-accent-strong flex items-center gap-1"
                                       title="Запустить локальный AI-разбор"
                                     >
                                       {aiLoadingCandId === cand.id ? (
@@ -1289,9 +1292,9 @@ export default function App() {
             )}
 
             {atsViewMode === 'table' && (
-            <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+            <div className="shadow-surface bg-panel border border-line rounded-xl overflow-hidden">
               <table className="w-full text-left text-xs">
-                <thead className="bg-slate-950 text-slate-400 border-b border-slate-800">
+                <thead className="bg-canvas text-muted border-b border-line">
                   <tr>
                     <th className="p-3">Кандидат и контакты</th>
                     <th className="p-3">Распознанный стек и AI-ревью</th>
@@ -1300,7 +1303,7 @@ export default function App() {
                     <th className="p-3">Действия</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800">
+                <tbody className="divide-y divide-line">
                   {filteredCandidates.map(cand => {
                     const vac = vacancies.find(v => v.id === cand.vacancyId);
                     const days = getDaysInCurrentStage(cand);
@@ -1309,17 +1312,17 @@ export default function App() {
                       : null;
 
                     return (
-                      <tr key={cand.id} className="hover:bg-slate-800/40 align-top">
+                      <tr key={cand.id} className="hover:bg-subtle/40 align-top">
                         <td className="p-3">
-                          <button type="button" onClick={() => setDossierId(cand.id)} className="font-semibold text-slate-100 underline text-left">{cand.fullName}</button>
-                          <div className="text-[11px] text-slate-500">{vac?.title}</div>
-                          <div className="text-slate-400 space-x-2 mt-0.5">
+                          <button type="button" onClick={() => setDossierId(cand.id)} className="font-semibold text-ink underline text-left">{cand.fullName}</button>
+                          <div className="text-[11px] text-faint">{vac?.title}</div>
+                          <div className="text-muted space-x-2 mt-0.5">
                             {cand.contacts.phone && <span>{cand.contacts.phone}</span>}
                             {cand.contacts.email && <span>{cand.contacts.email}</span>}
-                            {cand.contacts.telegram && <span className="text-emerald-400">{cand.contacts.telegram}</span>}
+                            {cand.contacts.telegram && <span className="text-accent">{cand.contacts.telegram}</span>}
                           </div>
                           <div className="mt-1">
-                            <span className={`px-1.5 py-0.5 rounded text-[10px] ${days > 7 ? 'bg-amber-500/20 text-amber-300' : 'bg-slate-800 text-slate-400'}`}>
+                            <span className={`px-1.5 py-0.5 rounded text-[10px] ${days > 7 ? 'bg-warning-fill/20 text-warning' : 'bg-subtle text-muted'}`}>
                               На этапе: {days} дн.
                             </span>
                           </div>
@@ -1327,11 +1330,11 @@ export default function App() {
                         <td className="p-3 max-w-md">
                           <div className="flex flex-wrap gap-1">
                             {cand.skills.map(s => (
-                              <span key={s} className="px-1.5 py-0.5 bg-slate-800 rounded text-[11px]">{s}</span>
+                              <span key={s} className="px-1.5 py-0.5 bg-subtle rounded text-[11px]">{s}</span>
                             ))}
                           </div>
                           {cand.aiSummary && (
-                            <div className="mt-2 p-2 bg-emerald-950/30 border border-emerald-500/30 rounded text-[11px] text-slate-200 whitespace-pre-wrap">
+                            <div className="mt-2 p-2 bg-accent-tint/30 border border-accent/30 rounded text-[11px] text-ink whitespace-pre-wrap">
                               {cand.aiSummary}
                             </div>
                           )}
@@ -1340,7 +1343,7 @@ export default function App() {
                           {cand.expectedSalary ? (
                             <div>
                               <span className="font-medium">{cand.expectedSalary.toLocaleString('ru-RU')} ₽</span>
-                              {compa && <div className="text-[11px] text-slate-400">CR: {compa.ratio}%</div>}
+                              {compa && <div className="text-[11px] text-muted">CR: {compa.ratio}%</div>}
                             </div>
                           ) : '—'}
                         </td>
@@ -1348,14 +1351,14 @@ export default function App() {
                           <select
                             value={cand.stage}
                             onChange={e => updateCandidateStage(cand.id, e.target.value as CandidateStage)}
-                            className="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-xs"
+                            className="bg-canvas border border-line-strong rounded px-2 py-1 text-xs"
                           >
                             {Object.entries(STAGE_LABELS).map(([k, label]) => (
                               <option key={k} value={k}>{label}</option>
                             ))}
                           </select>
                           {cand.rejectionReason && (
-                            <div className="text-[11px] text-rose-400 mt-1">{cand.rejectionReason}</div>
+                            <div className="text-[11px] text-danger mt-1">{cand.rejectionReason}</div>
                           )}
                         </td>
                         <td className="p-3">
@@ -1364,7 +1367,7 @@ export default function App() {
                               onClick={() => runLocalAiAnalysis(cand)}
                               disabled={aiLoadingCandId === cand.id}
                               title="Проанализировать через локальную LLM (LM Studio / Ollama)"
-                              className="px-2 py-1 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 rounded text-[11px] flex items-center gap-1"
+                              className="px-2 py-1 bg-accent-fill/20 hover:bg-accent-fill/30 text-accent-strong border border-accent/30 rounded text-[11px] flex items-center gap-1"
                             >
                               {aiLoadingCandId === cand.id ? (
                                 <Loader2 className="w-3 h-3 animate-spin" />
@@ -1376,7 +1379,7 @@ export default function App() {
                             <button
                               onClick={() => deleteCandidate(cand.id)}
                               title="Удалить из IndexedDB"
-                              className="p-1 text-slate-500 hover:text-rose-400"
+                              className="p-1 text-faint hover:text-danger"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
@@ -1394,20 +1397,20 @@ export default function App() {
 
         {dbReady && activeTab === 'scorecard' && activeCandidate && activeVacancy && (
           <div className="max-w-4xl space-y-6">
-            <div className="flex items-center justify-between bg-slate-900 p-4 rounded-xl border border-slate-800">
+            <div className="shadow-surface flex items-center justify-between bg-panel p-4 rounded-xl border border-line">
               <div>
-                <label className="text-xs text-slate-400 block">Оцениваемый кандидат ({activeVacancy.title}):</label>
+                <label className="text-xs text-muted block">Оцениваемый кандидат ({activeVacancy.title}):</label>
                 <select
                   value={activeCandidate.id}
                   onChange={e => setActiveCandId(e.target.value)}
-                  className="mt-1 bg-slate-950 border border-slate-700 rounded p-2 text-sm font-medium"
+                  className="mt-1 bg-canvas border border-line-strong rounded p-2 text-sm font-medium"
                 >
                   {candidates.map(c => <option key={c.id} value={c.id}>{c.fullName}</option>)}
                 </select>
               </div>
               <div className="text-right">
-                <span className="text-xs text-slate-400">Средневзвешенный балл:</span>
-                <div className="text-2xl font-bold text-emerald-400">
+                <span className="text-xs text-muted">Средневзвешенный балл:</span>
+                <div className="text-2xl font-bold text-accent">
                   {calculateWeightedScore(activeVacancy.competencies, activeCandidate.scores)} / 5.0
                 </div>
               </div>
@@ -1417,11 +1420,11 @@ export default function App() {
               {activeVacancy.competencies.map(comp => {
                 const current = activeCandidate.scores[comp.id] || { score: 0, note: '' };
                 return (
-                  <div key={comp.id} className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-2">
+                  <div key={comp.id} className="bg-panel border border-line rounded-xl p-4 space-y-2">
                     <div className="flex justify-between items-start">
                       <div>
                         <span className="text-sm font-semibold">{comp.name}</span>
-                        <span className="ml-2 text-xs px-2 py-0.5 bg-slate-800 rounded text-slate-300">
+                        <span className="ml-2 text-xs px-2 py-0.5 bg-subtle rounded text-ink-soft">
                           Вес: x{comp.weight}
                         </span>
                       </div>
@@ -1432,8 +1435,8 @@ export default function App() {
                             onClick={() => handleScoreChange(comp.id, n, current.note)}
                             className={`w-8 h-8 rounded font-bold text-xs ${
                               current.score === n 
-                                ? 'bg-emerald-500 text-slate-950' 
-                                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                                ? 'bg-accent-fill text-on-accent'
+                                : 'bg-subtle text-ink-soft hover:bg-raised'
                             }`}
                           >
                             {n}
@@ -1441,12 +1444,12 @@ export default function App() {
                         ))}
                       </div>
                     </div>
-                    <p className="text-xs text-slate-400 italic">STAR-вопрос: {comp.starPrompt}</p>
+                    <p className="text-xs text-muted italic">STAR-вопрос: {comp.starPrompt}</p>
                     <input
                       value={current.note}
                       onChange={e => handleScoreChange(comp.id, current.score, e.target.value)}
                       placeholder="Заметки интервьюера (сохраняются в IndexedDB мгновенно)..."
-                      className="w-full bg-slate-950 border border-slate-800 rounded p-2 text-xs"
+                      className="w-full bg-canvas border border-line rounded p-2 text-xs"
                     />
                   </div>
                 );
@@ -1460,11 +1463,11 @@ export default function App() {
           <div className="max-w-5xl space-y-6">
             <div className="flex items-center justify-between">
               <h2 className="text-xl font-semibold">Дашборд воронки рекрутинга и аналитика отказов</h2>
-              <button onClick={() => exportAnalyticsToCsv(funnelSteps, rejectionMetrics, analyticsVacancyFilter === 'all' ? 'Все вакансии' : (vacancies.find(v => v.id === analyticsVacancyFilter)?.title || 'Вакансия'))} className="px-3 py-2 bg-emerald-600 text-white rounded text-xs">Скачать CSV</button>
+              <button onClick={() => exportAnalyticsToCsv(funnelSteps, rejectionMetrics, analyticsVacancyFilter === 'all' ? 'Все вакансии' : (vacancies.find(v => v.id === analyticsVacancyFilter)?.title || 'Вакансия'))} className="px-3 py-2 bg-accent-fill text-on-accent rounded text-xs">Скачать CSV</button>
               <select
                 value={analyticsVacancyFilter}
                 onChange={e => setAnalyticsVacancyFilter(e.target.value)}
-                className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-xs"
+                className="bg-panel border border-line rounded-lg px-3 py-1.5 text-xs"
               >
                 <option value="all">Все вакансии ({candidates.length} канд.)</option>
                 {vacancies.map(v => (
@@ -1475,29 +1478,29 @@ export default function App() {
 
             <div className="grid grid-cols-12 gap-6">
               {/* Горизонтальная воронка конверсии по этапам */}
-              <div className="col-span-7 bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-3">
-                <h3 className="text-sm font-semibold text-emerald-400">
+              <div className="shadow-surface col-span-7 bg-panel border border-line rounded-xl p-4 space-y-3">
+                <h3 className="text-sm font-semibold text-accent">
                   Этапы подбора и переходы между этапами
                 </h3>
-                <p className="text-xs text-slate-400">Учитываются записанные этапы. Переход — доля достигших предыдущего этапа, которые также побывали на текущем.</p>
+                <p className="text-xs text-muted">Учитываются записанные этапы. Переход — доля достигших предыдущего этапа, которые также побывали на текущем.</p>
                 <div className="space-y-3">
                   {funnelSteps.map((step, i) => (
                     <div key={step.stage} className="space-y-1">
                       <div className="flex justify-between text-xs">
-                        <span className="font-medium text-slate-200">
+                        <span className="font-medium text-ink">
                           {step.label}{' '}
-                          <span className="text-slate-500">
+                          <span className="text-faint">
                             (сейчас на этапе: {step.currentCount})
                           </span>
                         </span>
-                        <span className="text-slate-300">
-                          <strong className="text-emerald-400">{step.reachedCount}</strong> чел. ({step.conversionFromTop}% от входа
+                        <span className="text-ink-soft">
+                          <strong className="text-accent">{step.reachedCount}</strong> чел. ({step.conversionFromTop}% от входа
                           {i > 0 ? ` • ${step.conversionFromPrev}% из пред.` : ''})
                         </span>
                       </div>
-                      <div className="w-full h-3 bg-slate-950 rounded-full overflow-hidden border border-slate-800">
+                      <div className="w-full h-3 bg-canvas rounded-full overflow-hidden border border-line">
                         <div
-                          className="h-full bg-gradient-to-r from-emerald-600 to-teal-400 transition-all duration-300"
+                          className="h-full bg-gradient-to-r from-accent-fill to-accent-end transition-all duration-300"
                           style={{ width: `${Math.max(step.conversionFromTop, step.reachedCount > 0 ? 6 : 0)}%` }}
                         />
                       </div>
@@ -1507,25 +1510,25 @@ export default function App() {
               </div>
 
               {/* Парето-диаграмма причин отказов */}
-              <div className="col-span-5 bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-3">
-                <h3 className="text-sm font-semibold text-rose-400">
+              <div className="shadow-surface col-span-5 bg-panel border border-line rounded-xl p-4 space-y-3">
+                <h3 className="text-sm font-semibold text-danger">
                   Структура причин отказов
                 </h3>
                 {rejectionMetrics.length === 0 ? (
-                  <p className="text-xs text-slate-500">По выбранному фильтру пока нет кандидатов в статусе «Отказ».</p>
+                  <p className="text-xs text-faint">По выбранному фильтру пока нет кандидатов в статусе «Отказ».</p>
                 ) : (
                   <div className="space-y-3">
                     {rejectionMetrics.map(item => (
                       <div key={item.reason} className="space-y-1">
                         <div className="flex justify-between text-xs">
-                          <span className="text-slate-300 truncate pr-2">{item.reason}</span>
-                          <span className="text-rose-400 font-semibold shrink-0">
+                          <span className="text-ink-soft truncate pr-2">{item.reason}</span>
+                          <span className="text-danger font-semibold shrink-0">
                             {item.count} ({item.sharePercent}%)
                           </span>
                         </div>
-                        <div className="w-full h-2.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800">
+                        <div className="w-full h-2.5 bg-canvas rounded-full overflow-hidden border border-line">
                           <div
-                            className="h-full bg-rose-500/80"
+                            className="h-full bg-danger-fill/80"
                             style={{ width: `${item.sharePercent}%` }}
                           />
                         </div>
@@ -1539,37 +1542,37 @@ export default function App() {
             {/* Калькулятор стоимости замены сотрудника */}
             <div className="pt-2 space-y-4">
               <h3 className="text-lg font-semibold">Калькулятор стоимости замены сотрудника (Turnover Cost)</h3>
-              <div className="grid grid-cols-3 gap-4 bg-slate-900 p-4 rounded-xl border border-slate-800">
+              <div className="shadow-surface grid grid-cols-3 gap-4 bg-panel p-4 rounded-xl border border-line">
                 <div>
-                  <label className="text-xs text-slate-400">Оклад специалиста (₽/мес)</label>
-                  <input type="number" value={tcSalary} onChange={e => setTcSalary(Number(e.target.value))} className="w-full mt-1 bg-slate-950 border border-slate-800 rounded p-2 text-sm" />
+                  <label className="text-xs text-muted">Оклад специалиста (₽/мес)</label>
+                  <input type="number" value={tcSalary} onChange={e => setTcSalary(Number(e.target.value))} className="w-full mt-1 bg-canvas border border-line rounded p-2 text-sm" />
                 </div>
                 <div>
-                  <label className="text-xs text-slate-400">Срок закрытия вакансии (Time to Fill, дней)</label>
-                  <input type="number" value={tcDays} onChange={e => setTcDays(Number(e.target.value))} className="w-full mt-1 bg-slate-950 border border-slate-800 rounded p-2 text-sm" />
+                  <label className="text-xs text-muted">Срок закрытия вакансии (Time to Fill, дней)</label>
+                  <input type="number" value={tcDays} onChange={e => setTcDays(Number(e.target.value))} className="w-full mt-1 bg-canvas border border-line rounded p-2 text-sm" />
                 </div>
                 <div>
-                  <label className="text-xs text-slate-400">Срок выхода на 100% KPI (месяцев)</label>
-                  <input type="number" value={tcOnboarding} onChange={e => setTcOnboarding(Number(e.target.value))} className="w-full mt-1 bg-slate-950 border border-slate-800 rounded p-2 text-sm" />
+                  <label className="text-xs text-muted">Срок выхода на 100% KPI (месяцев)</label>
+                  <input type="number" value={tcOnboarding} onChange={e => setTcOnboarding(Number(e.target.value))} className="w-full mt-1 bg-canvas border border-line rounded p-2 text-sm" />
                 </div>
               </div>
 
               <div className="grid grid-cols-4 gap-4">
-                <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl">
-                  <div className="text-xs text-slate-400">Потери от простоя</div>
+                <div className="shadow-surface bg-panel border border-line p-4 rounded-xl">
+                  <div className="text-xs text-muted">Потери от простоя</div>
                   <div className="text-lg font-bold mt-1">{turnoverResult.vacancyLoss.toLocaleString('ru-RU')} ₽</div>
                 </div>
-                <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl">
-                  <div className="text-xs text-slate-400">Потери на адаптации</div>
+                <div className="shadow-surface bg-panel border border-line p-4 rounded-xl">
+                  <div className="text-xs text-muted">Потери на адаптации</div>
                   <div className="text-lg font-bold mt-1">{turnoverResult.rampUpLoss.toLocaleString('ru-RU')} ₽</div>
                 </div>
-                <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl">
-                  <div className="text-xs text-slate-400">Затраты на подбор</div>
+                <div className="shadow-surface bg-panel border border-line p-4 rounded-xl">
+                  <div className="text-xs text-muted">Затраты на подбор</div>
                   <div className="text-lg font-bold mt-1">{turnoverResult.hiringCost.toLocaleString('ru-RU')} ₽</div>
                 </div>
-                <div className="bg-emerald-950/40 border border-emerald-500/40 p-4 rounded-xl">
-                  <div className="text-xs text-emerald-300">Итого стоимость потери</div>
-                  <div className="text-xl font-bold text-emerald-400 mt-1">
+                <div className="bg-accent-tint/40 border border-accent/40 p-4 rounded-xl">
+                  <div className="text-xs text-accent-strong">Итого стоимость потери</div>
+                  <div className="text-xl font-bold text-accent mt-1">
                     {turnoverResult.totalCost.toLocaleString('ru-RU')} ₽ ({turnoverResult.salaryMultiplier} оклада)
                   </div>
                 </div>
