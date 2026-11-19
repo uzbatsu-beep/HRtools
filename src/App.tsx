@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Search, Users, ClipboardCheck, BarChart3, FileText, Briefcase,
   Download, Upload, Copy, Plus, FileUp, Loader2, CheckCircle2,
-  Database, Cpu, Sparkles, Trash2
+  Database, Cpu, Sparkles, Trash2, Columns, FileSpreadsheet
 } from 'lucide-react';
 import { Vacancy, Candidate, CandidateStage, Competency } from './db/schema';
 import { BOOLEAN_PRESETS, REJECTION_REASONS } from './db/seed';
@@ -18,6 +18,11 @@ import {
   calculateFunnelMetrics,
   calculateRejectionBreakdown
 } from './utils/metricsMath';
+import {
+  exportCandidatesToCsv,
+  exportAnalyticsToCsv,
+  exportComparisonMatrixToCsv
+} from './utils/csvExport';
 
 const STAGE_LABELS: Record<CandidateStage, string> = {
   screening: '1. Скрининг',
@@ -30,7 +35,7 @@ const STAGE_LABELS: Record<CandidateStage, string> = {
 };
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'boolean' | 'vacancies' | 'ats' | 'scorecard' | 'analytics' | 'docs'>('ats');
+  const [activeTab, setActiveTab] = useState<'boolean' | 'vacancies' | 'ats' | 'scorecard' | 'compare' | 'analytics' | 'docs'>('ats');
   const [dbReady, setDbReady] = useState(false);
   const [vacancies, setVacancies] = useState<Vacancy[]>([]);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
@@ -39,6 +44,11 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [stageFilter, setStageFilter] = useState<string>('all');
   const [analyticsVacancyFilter, setAnalyticsVacancyFilter] = useState<string>('all');
+
+  // Состояние модуля сравнения кандидатов (Side-by-Side v0.5.0)
+  const [compareVacancyId, setCompareVacancyId] = useState<string>('vac-1');
+  const [selectedCompareIds, setSelectedCompareIds] = useState<string[]>([]);
+
 
   // Конфигурация локальной LLM (LM Studio / Ollama)
   const [llmEndpoint, setLlmEndpoint] = useState(
@@ -53,6 +63,10 @@ export default function App() {
     initAndMigrateDatabase().then(({ vacancies: v, candidates: c }) => {
       setVacancies(v);
       setCandidates(c);
+      const initialVacId = v[0]?.id || 'vac-1';
+      setCompareVacancyId(initialVacId);
+      const initialPool = c.filter(cand => cand.vacancyId === initialVacId).slice(0, 3).map(cand => cand.id);
+      setSelectedCompareIds(initialPool);
       setDbReady(true);
     });
   }, []);
@@ -346,6 +360,39 @@ export default function App() {
     setCandidates(prev => prev.map(c => c.id === activeCandidate.id ? updated : c));
   };
 
+  // --- Модуль 5: Сравнение кандидатов бок о бок (Side-by-Side v0.5.0) ---
+  const compareVacancy = vacancies.find(v => v.id === compareVacancyId) || vacancies[0];
+  const vacancyCandidatesPool = useMemo(
+    () => candidates.filter(c => c.vacancyId === compareVacancy?.id),
+    [candidates, compareVacancy]
+  );
+
+  const comparedCandidates = useMemo(
+    () => vacancyCandidatesPool.filter(c => selectedCompareIds.includes(c.id)),
+    [vacancyCandidatesPool, selectedCompareIds]
+  );
+
+  useEffect(() => {
+    setSelectedCompareIds(ids => ids.filter(id => vacancyCandidatesPool.some(c => c.id === id)));
+  }, [vacancyCandidatesPool]);
+
+  const toggleCandidateInComparison = (candId: string) => {
+    setSelectedCompareIds(prev => {
+      if (prev.includes(candId)) return prev.filter(id => id !== candId);
+      if (prev.length >= 4) {
+        alert('Для удобного чтения бок о бок можно выбрать максимум 4 кандидатов одновременно.');
+        return prev;
+      }
+      return [...prev, candId];
+    });
+  };
+
+  const handleCompareVacancyChange = (vacId: string) => {
+    setCompareVacancyId(vacId);
+    const poolIds = candidates.filter(c => c.vacancyId === vacId).slice(0, 3).map(c => c.id);
+    setSelectedCompareIds(poolIds);
+  };
+
   // --- Модуль 5: Графики воронки, отказов и ROI Калькулятор ---
   const [tcSalary, setTcSalary] = useState(190000);
   const [tcDays, setTcDays] = useState(42);
@@ -378,7 +425,7 @@ export default function App() {
       db.candidates.toArray()
     ]);
     const payload = JSON.stringify({
-      engine: 'IndexedDB-Dexie-v0.4.0',
+      engine: 'IndexedDB-Dexie-v0.5.0',
       exportedAt: new Date().toISOString(),
       vacancies: allVacancies,
       candidates: allCandidates
@@ -421,7 +468,7 @@ export default function App() {
             <h1 className="text-lg font-bold tracking-tight text-emerald-400">HRtools</h1>
             <div className="flex items-center gap-1.5 text-[11px] text-slate-400 mt-0.5">
               <Database className="w-3 h-3 text-emerald-400" />
-              <span>v0.4.0 • IndexedDB ({candidates.length})</span>
+              <span>v0.5.0 • IndexedDB ({candidates.length})</span>
             </div>
           </div>
           <nav className="space-y-1">
@@ -429,6 +476,7 @@ export default function App() {
               { id: 'ats', label: 'Мини-ATS и Парсер', icon: Users },
               { id: 'vacancies', label: 'Вакансии и Матрицы', icon: Briefcase },
               { id: 'scorecard', label: 'Скоркарта STAR', icon: ClipboardCheck },
+              { id: 'compare', label: 'Сравнение кандидатов', icon: Columns },
               { id: 'analytics', label: 'Воронка и ROI', icon: BarChart3 },
               { id: 'boolean', label: 'Сорсинг и Boolean', icon: Search },
               { id: 'docs', label: 'Оффер и План 30-60-90', icon: FileText }
@@ -482,6 +530,12 @@ export default function App() {
 
         <div className="border-t border-slate-800 pt-4 space-y-2">
           <button
+            onClick={() => exportCandidatesToCsv(candidates, vacancies, STAGE_LABELS)}
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 rounded text-xs font-medium text-emerald-300"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5" /> Выгрузить базу в CSV
+          </button>
+          <button
             onClick={exportDatabase}
             className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-slate-800 hover:bg-slate-700 rounded text-xs font-medium text-slate-200"
           >
@@ -507,6 +561,207 @@ export default function App() {
         {!dbReady && (
           <div className="text-xs text-slate-400 flex items-center gap-2">
             <Loader2 className="w-4 h-4 animate-spin" /> Инициализация транзакционной базы IndexedDB...
+          </div>
+        )}
+
+        {/* ВКЛАДКА: СРАВНЕНИЕ КАНДИДАТОВ БОК О БОК (SIDE-BY-SIDE v0.5.0) */}
+        {dbReady && activeTab === 'compare' && compareVacancy && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between bg-slate-900 p-4 rounded-xl border border-slate-800">
+              <div>
+                <h2 className="text-lg font-semibold">Сравнение финальных кандидатов (Side-by-Side Matrix)</h2>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Сопоставление оценок по компетенциям, весов, Compa-Ratio и выводов ИИ на одном экране
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <select
+                  value={compareVacancy.id}
+                  onChange={e => handleCompareVacancyChange(e.target.value)}
+                  className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs font-medium"
+                >
+                  {vacancies.map(v => (
+                    <option key={v.id} value={v.id}>Вакансия: {v.title}</option>
+                  ))}
+                </select>
+                <button
+                  onClick={() => exportComparisonMatrixToCsv(compareVacancy, comparedCandidates, STAGE_LABELS)}
+                  disabled={comparedCandidates.length === 0}
+                  className="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white rounded-lg text-xs font-medium flex items-center gap-1.5"
+                >
+                  <FileSpreadsheet className="w-4 h-4" /> Экспорт матрицы в CSV
+                </button>
+              </div>
+            </div>
+
+            {/* Выбор кандидатов для сравнения (чекбоксы-чипы) */}
+            <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-2">
+              <div className="text-xs text-slate-400">
+                Выберите до 4 кандидатов по вакансии «{compareVacancy.title}» для сопоставления:
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {vacancyCandidatesPool.map(c => {
+                  const isSelected = selectedCompareIds.includes(c.id);
+                  const wScore = calculateWeightedScore(compareVacancy.competencies, c.scores);
+                  return (
+                    <button
+                      key={c.id}
+                      onClick={() => toggleCandidateInComparison(c.id)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition flex items-center gap-2 ${
+                        isSelected
+                          ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300'
+                          : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      <span>{c.fullName}</span>
+                      <span className="px-1.5 py-0.5 bg-slate-900 rounded text-[10px]">
+                        {wScore > 0 ? `${wScore} ★` : STAGE_LABELS[c.stage]}
+                      </span>
+                    </button>
+                  );
+                })}
+                {vacancyCandidatesPool.length === 0 && (
+                  <span className="text-xs text-slate-500">На этой вакансии пока нет кандидатов.</span>
+                )}
+              </div>
+            </div>
+
+            {/* Таблица Side-by-Side */}
+            {comparedCandidates.length > 0 && (
+              <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-slate-950 border-b border-slate-800">
+                      <th className="p-3.5 w-64 text-slate-400 font-medium">Критерий / Компетенция</th>
+                      {comparedCandidates.map(cand => {
+                        return (
+                          <th key={cand.id} className="p-3.5 border-l border-slate-800 min-w-[230px]">
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm font-bold text-slate-100">{cand.fullName}</span>
+
+                            </div>
+                            <div className="text-[11px] text-slate-400 font-normal mt-0.5">
+                              {STAGE_LABELS[cand.stage]} • {getDaysInCurrentStage(cand)} дн. на этапе
+                            </div>
+                          </th>
+                        );
+                      })}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800">
+                    {/* Строка: Итоговый средневзвешенный балл */}
+                    <tr className="bg-slate-950/60">
+                      <td className="p-3 font-semibold text-emerald-400">Средневзвешенный балл (STAR)</td>
+                      {comparedCandidates.map(cand => {
+                        const score = calculateWeightedScore(compareVacancy.competencies, cand.scores);
+                        return (
+                          <td key={cand.id} className="p-3 border-l border-slate-800">
+                            <span className="text-base font-bold text-emerald-400">
+                              {score > 0 ? `${score} / 5.0 (${compareVacancy.competencies.filter(comp => cand.scores[comp.id]?.score > 0).length}/${compareVacancy.competencies.length} оценено)` : 'Не оценен'}
+                            </span>
+                          </td>
+                        );
+                      })}
+                    </tr>
+
+                    {/* Строка: Зарплатные ожидания и Compa-Ratio */}
+                    <tr>
+                      <td className="p-3">
+                        <div className="font-medium text-slate-200">Ожидания по ЗП и Compa-Ratio</div>
+                        <div className="text-[11px] text-slate-500">
+                          Вилка: {compareVacancy.salaryMin.toLocaleString('ru-RU')} – {compareVacancy.salaryMax.toLocaleString('ru-RU')} ₽
+                        </div>
+                      </td>
+                      {comparedCandidates.map(cand => {
+                        const cr = cand.expectedSalary
+                          ? calculateCompaRatio(cand.expectedSalary, compareVacancy.salaryMin, compareVacancy.salaryMax)
+                          : null;
+                        return (
+                          <td key={cand.id} className="p-3 border-l border-slate-800">
+                            {cand.expectedSalary ? (
+                              <div>
+                                <div className="font-semibold text-slate-100">
+                                  {cand.expectedSalary.toLocaleString('ru-RU')} ₽
+                                </div>
+                                {cr && (
+                                  <div className={`text-[11px] mt-0.5 ${cr.ratio > 115 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                                    CR: {cr.ratio}% • {cr.zone}
+                                  </div>
+                                )}
+                              </div>
+                            ) : 'Не указано'}
+                          </td>
+                        );
+                      })}
+                    </tr>
+
+                    {/* Строки по каждой компетенции матрицы */}
+                    {compareVacancy.competencies.map(comp => (
+                      <tr key={comp.id} className="hover:bg-slate-800/30">
+                        <td className="p-3">
+                          <div className="font-medium text-slate-200">{comp.name}</div>
+                          <div className="flex items-center gap-1.5 mt-1">
+                            <span className="px-1.5 py-0.5 bg-slate-800 text-emerald-300 rounded text-[10px]">
+                              Вес x{comp.weight}
+                            </span>
+                            <span className="px-1.5 py-0.5 bg-slate-800 text-slate-400 rounded text-[10px] uppercase">
+                              {comp.category}
+                            </span>
+                          </div>
+                        </td>
+                        {comparedCandidates.map(cand => {
+                          const entry = cand.scores[comp.id];
+                          return (
+                            <td key={cand.id} className="p-3 border-l border-slate-800 align-top">
+                              {entry && entry.score > 0 ? (
+                                <div>
+                                  <div className="inline-block px-2 py-0.5 rounded font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                                    {entry.score} / 5
+                                  </div>
+                                  {entry.note && (
+                                    <p className="text-[11px] text-slate-300 mt-1.5 italic">«{entry.note}»</p>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-slate-500">—</span>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+
+                    {/* Строка: Технологический стек */}
+                    <tr>
+                      <td className="p-3 font-medium text-slate-300">Распознанный стек</td>
+                      {comparedCandidates.map(cand => (
+                        <td key={cand.id} className="p-3 border-l border-slate-800">
+                          <div className="flex flex-wrap gap-1">
+                            {cand.skills.map(s => (
+                              <span key={s} className="px-1.5 py-0.5 bg-slate-800 rounded text-[10px]">{s}</span>
+                            ))}
+                          </div>
+                        </td>
+                      ))}
+                    </tr>
+
+                    {/* Строка: Вывод локальной LLM */}
+                    <tr>
+                      <td className="p-3 font-medium text-slate-300">AI-заключение (LM Studio / Ollama)</td>
+                      {comparedCandidates.map(cand => (
+                        <td key={cand.id} className="p-3 border-l border-slate-800 align-top">
+                          {cand.aiSummary ? (
+                            <div className="text-[11px] text-slate-300 whitespace-pre-wrap">{cand.aiSummary}</div>
+                          ) : (
+                            <span className="text-slate-500 text-[11px]">Нет AI-разбора</span>
+                          )}
+                        </td>
+                      ))}
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
 
@@ -833,6 +1088,7 @@ export default function App() {
                   <option key={k} value={k}>{label}</option>
                 ))}
               </select>
+              <button onClick={() => exportCandidatesToCsv(filteredCandidates, vacancies, STAGE_LABELS)} className="px-3 py-1.5 bg-slate-800 text-emerald-300 rounded text-xs shrink-0">CSV ({filteredCandidates.length})</button>
             </div>
 
             <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
@@ -1005,6 +1261,7 @@ export default function App() {
           <div className="max-w-5xl space-y-6">
             <div className="flex items-center justify-between">
               <h2 className="text-xl font-semibold">Дашборд воронки рекрутинга и аналитика отказов</h2>
+              <button onClick={() => exportAnalyticsToCsv(funnelSteps, rejectionMetrics, analyticsVacancyFilter === 'all' ? 'Все вакансии' : (vacancies.find(v => v.id === analyticsVacancyFilter)?.title || 'Вакансия'))} className="px-3 py-2 bg-emerald-600 text-white rounded text-xs">Скачать CSV</button>
               <select
                 value={analyticsVacancyFilter}
                 onChange={e => setAnalyticsVacancyFilter(e.target.value)}
