@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
-  Search, Users, ClipboardCheck, BarChart3, FileText, 
+  Search, Users, ClipboardCheck, BarChart3, FileText, Briefcase,
   Download, Upload, Copy, Plus, FileUp, Loader2, CheckCircle2,
   Database, Cpu, Sparkles, Trash2
 } from 'lucide-react';
-import { Vacancy, Candidate, CandidateStage } from './db/schema';
+import { Vacancy, Candidate, CandidateStage, Competency } from './db/schema';
 import { BOOLEAN_PRESETS, REJECTION_REASONS } from './db/seed';
 import { db, initAndMigrateDatabase } from './db/database';
 import { parseRawResumeText } from './utils/cvParser';
@@ -14,7 +14,9 @@ import {
   getDaysInCurrentStage, 
   calculateWeightedScore, 
   calculateCompaRatio, 
-  calculateTurnoverCost 
+  calculateTurnoverCost,
+  calculateFunnelMetrics,
+  calculateRejectionBreakdown
 } from './utils/metricsMath';
 
 const STAGE_LABELS: Record<CandidateStage, string> = {
@@ -28,7 +30,7 @@ const STAGE_LABELS: Record<CandidateStage, string> = {
 };
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'boolean' | 'ats' | 'scorecard' | 'analytics' | 'docs'>('ats');
+  const [activeTab, setActiveTab] = useState<'boolean' | 'vacancies' | 'ats' | 'scorecard' | 'analytics' | 'docs'>('ats');
   const [dbReady, setDbReady] = useState(false);
   const [vacancies, setVacancies] = useState<Vacancy[]>([]);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
@@ -36,6 +38,7 @@ export default function App() {
   // Поиск и фильтрация по IndexedDB
   const [searchQuery, setSearchQuery] = useState('');
   const [stageFilter, setStageFilter] = useState<string>('all');
+  const [analyticsVacancyFilter, setAnalyticsVacancyFilter] = useState<string>('all');
 
   // Конфигурация локальной LLM (LM Studio / Ollama)
   const [llmEndpoint, setLlmEndpoint] = useState(
@@ -103,7 +106,83 @@ export default function App() {
     };
   }, [bTitles, bMust, bAlt, bNot, bLoc]);
 
-  // --- Модуль 2: Мини-ATS + IndexedDB + Drag-and-Drop ---
+  // --- Модуль 2: Конструктор Вакансий и Матриц компетенций (v0.4.0) ---
+  const [editingVacancyId, setEditingVacancyId] = useState<string>('vac-1');
+  const currentEditingVacancy = vacancies.find(v => v.id === editingVacancyId) || vacancies[0];
+
+  const [newCompName, setNewCompName] = useState('');
+  const [newCompWeight, setNewCompWeight] = useState<1 | 2 | 3>(2);
+  const [newCompCategory, setNewCompCategory] = useState<'hard' | 'soft'>('hard');
+  const [newCompPrompt, setNewCompPrompt] = useState('');
+
+  const handleCreateVacancy = async () => {
+    const newVac: Vacancy = {
+      id: `vac-${Date.now()}`,
+      title: 'Новая инженерная вакансия',
+      department: 'Производственный департамент',
+      openedAt: new Date().toISOString().slice(0, 10),
+      salaryMin: 150000,
+      salaryMax: 210000,
+      status: 'open',
+      competencies: [
+        {
+          id: `comp-${Date.now()}`,
+          name: 'Профильная техническая экспертиза',
+          weight: 3,
+          category: 'hard',
+          starPrompt: 'Расскажите о самом технически сложном проекте за последние 2 года и вашей личной роли в нем.'
+        }
+      ]
+    };
+    await db.vacancies.put(newVac);
+    setVacancies(prev => [...prev, newVac]);
+    setEditingVacancyId(newVac.id);
+  };
+
+  const handleUpdateVacancyField = async (patch: Partial<Vacancy>) => {
+    if (!currentEditingVacancy) return;
+    const id = currentEditingVacancy.id;
+    setVacancies(prev => prev.map(v => v.id === id ? { ...v, ...patch } : v));
+    try {
+      await db.vacancies.update(id, patch);
+    } catch {
+      setVacancies(await db.vacancies.toArray());
+      alert('Не удалось сохранить изменения вакансии.');
+    }
+  };
+
+  const handleAddCompetency = async () => {
+    if (!currentEditingVacancy || !newCompName.trim()) return;
+    const comp: Competency = {
+      id: `comp-${Date.now()}`,
+      name: newCompName.trim(),
+      weight: newCompWeight,
+      category: newCompCategory,
+      starPrompt: newCompPrompt.trim() || 'Опишите конкретную рабочую ситуацию (Situation, Task, Action, Result), где проявился этот навык.'
+    };
+    const updated: Vacancy = {
+      ...currentEditingVacancy,
+      competencies: [...currentEditingVacancy.competencies, comp]
+    };
+    await db.vacancies.put(updated);
+    setVacancies(prev => prev.map(v => v.id === updated.id ? updated : v));
+    setNewCompName('');
+    setNewCompPrompt('');
+  };
+
+  const handleRemoveCompetency = async (compId: string) => {
+    if (!currentEditingVacancy) return;
+    if (candidates.some(c => c.vacancyId === currentEditingVacancy.id && c.scores[compId]) &&
+      !window.confirm('По этой компетенции есть оценки кандидатов. После удаления они не будут учитываться в скоркарте. Удалить компетенцию?')) return;
+    const updated: Vacancy = {
+      ...currentEditingVacancy,
+      competencies: currentEditingVacancy.competencies.filter(c => c.id !== compId)
+    };
+    await db.vacancies.put(updated);
+    setVacancies(prev => prev.map(v => v.id === updated.id ? updated : v));
+  };
+
+  // --- Модуль 3: Мини-ATS + IndexedDB + Drag-and-Drop ---
   const [rawCvInput, setRawCvInput] = useState('');
   const [selectedVacancyId, setSelectedVacancyId] = useState('vac-1');
   const [isDragging, setIsDragging] = useState(false);
@@ -189,9 +268,14 @@ export default function App() {
       const input = window.prompt(
         `Укажите номер причины отказа:\n${REJECTION_REASONS.map((r, i) => `${i + 1}. ${r}`).join('\n')}`,
         '1'
-      ) || '1';
-      const idx = parseInt(input, 10) - 1;
-      reason = REJECTION_REASONS[idx] || REJECTION_REASONS[0];
+      );
+      if (input === null) return;
+      const idx = Number(input.trim()) - 1;
+      if (!Number.isInteger(idx) || !REJECTION_REASONS[idx]) {
+        alert('Укажите номер причины из списка.');
+        return;
+      }
+      reason = REJECTION_REASONS[idx];
     }
 
     const target = candidates.find(c => c.id === candId);
@@ -200,7 +284,7 @@ export default function App() {
     const updated: Candidate = {
       ...target,
       stage: newStage,
-      rejectionReason: newStage === 'rejected' ? reason : target.rejectionReason,
+      rejectionReason: newStage === 'rejected' ? reason : undefined,
       stageHistory: [...target.stageHistory, { stage: newStage, enteredAt: new Date().toISOString().slice(0, 10) }]
     };
 
@@ -235,7 +319,6 @@ export default function App() {
     }
   };
 
-  // Полнотекстовая фильтрация по базе кандидатов
   const filteredCandidates = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return candidates.filter(c => {
@@ -248,7 +331,7 @@ export default function App() {
     });
   }, [candidates, searchQuery, stageFilter]);
 
-  // --- Модуль 3: Скоркарта ---
+  // --- Модуль 4: Скоркарта ---
   const [activeCandId, setActiveCandId] = useState<string>('');
   const activeCandidate = candidates.find(c => c.id === activeCandId) || candidates[0];
   const activeVacancy = vacancies.find(v => v.id === activeCandidate?.vacancyId) || vacancies[0];
@@ -263,10 +346,11 @@ export default function App() {
     setCandidates(prev => prev.map(c => c.id === activeCandidate.id ? updated : c));
   };
 
-  // --- Модуль 4: Калькуляторы ---
+  // --- Модуль 5: Графики воронки, отказов и ROI Калькулятор ---
   const [tcSalary, setTcSalary] = useState(190000);
   const [tcDays, setTcDays] = useState(42);
   const [tcOnboarding, setTcOnboarding] = useState(3);
+
   const turnoverResult = useMemo(() => calculateTurnoverCost({
     monthlySalary: tcSalary,
     daysToFill: tcDays,
@@ -277,6 +361,16 @@ export default function App() {
     externalAdsCost: 15000
   }), [tcSalary, tcDays, tcOnboarding]);
 
+  const funnelSteps = useMemo(
+    () => calculateFunnelMetrics(candidates, STAGE_LABELS, analyticsVacancyFilter),
+    [candidates, analyticsVacancyFilter]
+  );
+
+  const rejectionMetrics = useMemo(
+    () => calculateRejectionBreakdown(candidates, analyticsVacancyFilter),
+    [candidates, analyticsVacancyFilter]
+  );
+
   // --- Экспорт / Импорт IndexedDB ---
   const exportDatabase = async () => {
     const [allVacancies, allCandidates] = await Promise.all([
@@ -284,7 +378,7 @@ export default function App() {
       db.candidates.toArray()
     ]);
     const payload = JSON.stringify({
-      engine: 'IndexedDB-Dexie-v0.3.0',
+      engine: 'IndexedDB-Dexie-v0.4.0',
       exportedAt: new Date().toISOString(),
       vacancies: allVacancies,
       candidates: allCandidates
@@ -327,15 +421,16 @@ export default function App() {
             <h1 className="text-lg font-bold tracking-tight text-emerald-400">HRtools</h1>
             <div className="flex items-center gap-1.5 text-[11px] text-slate-400 mt-0.5">
               <Database className="w-3 h-3 text-emerald-400" />
-              <span>v0.3.0 • IndexedDB ({candidates.length})</span>
+              <span>v0.4.0 • IndexedDB ({candidates.length})</span>
             </div>
           </div>
           <nav className="space-y-1">
             {[
-              { id: 'boolean', label: 'Сорсинг и Boolean', icon: Search },
               { id: 'ats', label: 'Мини-ATS и Парсер', icon: Users },
+              { id: 'vacancies', label: 'Вакансии и Матрицы', icon: Briefcase },
               { id: 'scorecard', label: 'Скоркарта STAR', icon: ClipboardCheck },
-              { id: 'analytics', label: 'Аналитика и ROI', icon: BarChart3 },
+              { id: 'analytics', label: 'Воронка и ROI', icon: BarChart3 },
+              { id: 'boolean', label: 'Сорсинг и Boolean', icon: Search },
               { id: 'docs', label: 'Оффер и План 30-60-90', icon: FileText }
             ].map(item => {
               const Icon = item.icon;
@@ -356,7 +451,6 @@ export default function App() {
             })}
           </nav>
 
-          {/* Панель настройки локальной LLM */}
           <div className="mt-6 p-3 bg-slate-950 border border-slate-800 rounded-lg space-y-2">
             <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-400">
               <Cpu className="w-3.5 h-3.5" /> Локальная LLM (Офлайн)
@@ -413,6 +507,184 @@ export default function App() {
         {!dbReady && (
           <div className="text-xs text-slate-400 flex items-center gap-2">
             <Loader2 className="w-4 h-4 animate-spin" /> Инициализация транзакционной базы IndexedDB...
+          </div>
+        )}
+
+        {/* ВКЛАДКА: КОНСТРУКТОР ВАКАНСИЙ И МАТРИЦ КОМПЕТЕНЦИЙ (v0.4.0) */}
+        {dbReady && activeTab === 'vacancies' && (
+          <div className="max-w-5xl space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-semibold">Конструктор вакансий и матриц компетенций</h2>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Настройте зарплатные вилки для расчета Compa-Ratio и весовые критерии для скоркарт STAR
+                </p>
+              </div>
+              <button
+                onClick={handleCreateVacancy}
+                className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium px-3.5 py-2 rounded-lg flex items-center gap-1.5"
+              >
+                <Plus className="w-4 h-4" /> Создать вакансию
+              </button>
+            </div>
+
+            {currentEditingVacancy && <>
+            <div className="flex gap-2 flex-wrap">
+              {vacancies.map(v => (
+                <button
+                  key={v.id}
+                  onClick={() => setEditingVacancyId(v.id)}
+                  className={`px-3 py-2 rounded-lg text-xs font-medium border transition ${
+                    v.id === currentEditingVacancy.id
+                      ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                      : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  {v.title} ({v.competencies.length} комп.)
+                </button>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-4 gap-4 bg-slate-900 p-4 rounded-xl border border-slate-800">
+              <div className="col-span-2">
+                <label className="text-xs text-slate-400">Название должности</label>
+                <input
+                  value={currentEditingVacancy.title}
+                  onChange={e => handleUpdateVacancyField({ title: e.target.value })}
+                  className="w-full mt-1 bg-slate-950 border border-slate-800 rounded p-2 text-sm font-medium"
+                />
+              </div>
+              <div className="col-span-2">
+                <label className="text-xs text-slate-400">Департамент / Цех / Отдел</label>
+                <input
+                  value={currentEditingVacancy.department}
+                  onChange={e => handleUpdateVacancyField({ department: e.target.value })}
+                  className="w-full mt-1 bg-slate-950 border border-slate-800 rounded p-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-slate-400">Мин. вилка грейда (₽)</label>
+                <input
+                  type="number"
+                  value={currentEditingVacancy.salaryMin}
+                  onChange={e => handleUpdateVacancyField({ salaryMin: Number(e.target.value) })}
+                  className="w-full mt-1 bg-slate-950 border border-slate-800 rounded p-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-slate-400">Макс. вилка грейда (₽)</label>
+                <input
+                  type="number"
+                  value={currentEditingVacancy.salaryMax}
+                  onChange={e => handleUpdateVacancyField({ salaryMax: Number(e.target.value) })}
+                  className="w-full mt-1 bg-slate-950 border border-slate-800 rounded p-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-slate-400">Медиана грейда (100% CR)</label>
+                <div className="mt-1 bg-slate-950 border border-slate-800 rounded p-2 text-sm text-emerald-400 font-semibold">
+                  {Math.round((currentEditingVacancy.salaryMin + currentEditingVacancy.salaryMax) / 2).toLocaleString('ru-RU')} ₽
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-slate-400">Дата открытия заявки</label>
+                <input
+                  type="date"
+                  value={currentEditingVacancy.openedAt}
+                  onChange={e => handleUpdateVacancyField({ openedAt: e.target.value })}
+                  className="w-full mt-1 bg-slate-950 border border-slate-800 rounded p-2 text-sm"
+                />
+              </div>
+            </div>
+
+            {/* Список компетенций вакансии */}
+            <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-4">
+              <h3 className="text-sm font-semibold text-emerald-400">
+                Матрица оценки для интервью ({currentEditingVacancy.competencies.length})
+              </h3>
+
+              <div className="space-y-2">
+                {currentEditingVacancy.competencies.map(comp => (
+                  <div
+                    key={comp.id}
+                    className="flex items-start justify-between gap-4 bg-slate-950 border border-slate-800 rounded-lg p-3"
+                  >
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-semibold text-slate-100">{comp.name}</span>
+                        <span className="px-2 py-0.5 bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 rounded text-[10px]">
+                          Вес x{comp.weight}
+                        </span>
+                        <span className="px-2 py-0.5 bg-slate-800 text-slate-400 rounded text-[10px] uppercase">
+                          {comp.category}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-400 italic">STAR: {comp.starPrompt}</p>
+                    </div>
+                    <button
+                      onClick={() => handleRemoveCompetency(comp.id)}
+                      className="text-slate-500 hover:text-rose-400 p-1"
+                      title="Удалить компетенцию"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              {/* Форма добавления новой компетенции */}
+              <div className="border-t border-slate-800 pt-4 grid grid-cols-12 gap-3">
+                <div className="col-span-5">
+                  <label className="text-[11px] text-slate-400">Название компетенции / навыка</label>
+                  <input
+                    value={newCompName}
+                    onChange={e => setNewCompName(e.target.value)}
+                    placeholder="Напр.: Проектирование контуров ПАЗ / Архитектура БД"
+                    className="w-full mt-1 bg-slate-950 border border-slate-800 rounded p-2 text-xs"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="text-[11px] text-slate-400">Вес (1–3)</label>
+                  <select
+                    value={newCompWeight}
+                    onChange={e => setNewCompWeight(Number(e.target.value) as 1 | 2 | 3)}
+                    className="w-full mt-1 bg-slate-950 border border-slate-800 rounded p-2 text-xs"
+                  >
+                    <option value={1}>x1 (Базовый)</option>
+                    <option value={2}>x2 (Важный)</option>
+                    <option value={3}>x3 (Критический)</option>
+                  </select>
+                </div>
+                <div className="col-span-2">
+                  <label className="text-[11px] text-slate-400">Тип</label>
+                  <select
+                    value={newCompCategory}
+                    onChange={e => setNewCompCategory(e.target.value as 'hard' | 'soft')}
+                    className="w-full mt-1 bg-slate-950 border border-slate-800 rounded p-2 text-xs"
+                  >
+                    <option value="hard">Hard Skill</option>
+                    <option value="soft">Soft Skill</option>
+                  </select>
+                </div>
+                <div className="col-span-3 flex items-end">
+                  <button
+                    onClick={handleAddCompetency}
+                    className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs py-2 px-3 rounded flex items-center justify-center gap-1"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Добавить в матрицу
+                  </button>
+                </div>
+                <div className="col-span-12">
+                  <input
+                    value={newCompPrompt}
+                    onChange={e => setNewCompPrompt(e.target.value)}
+                    placeholder="Поведенческий вопрос по методу STAR (что именно спросить на собеседовании для проверки навыка)..."
+                    className="w-full bg-slate-950 border border-slate-800 rounded p-2 text-xs"
+                  />
+                </div>
+              </div>
+            </div>
+            </>}
           </div>
         )}
 
@@ -544,7 +816,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* Полнотекстовый поиск и фильтр по базе IndexedDB */}
             <div className="flex gap-3 bg-slate-900 p-3 rounded-xl border border-slate-800">
               <input
                 value={searchQuery}
@@ -587,6 +858,7 @@ export default function App() {
                       <tr key={cand.id} className="hover:bg-slate-800/40 align-top">
                         <td className="p-3">
                           <div className="font-semibold text-slate-100">{cand.fullName}</div>
+                          <div className="text-[11px] text-slate-500">{vac?.title}</div>
                           <div className="text-slate-400 space-x-2 mt-0.5">
                             {cand.contacts.phone && <span>{cand.contacts.phone}</span>}
                             {cand.contacts.email && <span>{cand.contacts.email}</span>}
@@ -669,7 +941,7 @@ export default function App() {
           <div className="max-w-4xl space-y-6">
             <div className="flex items-center justify-between bg-slate-900 p-4 rounded-xl border border-slate-800">
               <div>
-                <label className="text-xs text-slate-400 block">Оцениваемый кандидат:</label>
+                <label className="text-xs text-slate-400 block">Оцениваемый кандидат ({activeVacancy.title}):</label>
                 <select
                   value={activeCandidate.id}
                   onChange={e => setActiveCandId(e.target.value)}
@@ -728,41 +1000,122 @@ export default function App() {
           </div>
         )}
 
+        {/* ВКЛАДКА: ВИЗУАЛЬНЫЕ ГРАФИКИ ВОРОНКИ, ОТКАЗОВ И КАЛЬКУЛЯТОР ROI (v0.4.0) */}
         {dbReady && activeTab === 'analytics' && (
-          <div className="max-w-4xl space-y-6">
-            <h2 className="text-xl font-semibold">Калькулятор стоимости замены сотрудника (Turnover Cost)</h2>
-            <div className="grid grid-cols-3 gap-4 bg-slate-900 p-4 rounded-xl border border-slate-800">
-              <div>
-                <label className="text-xs text-slate-400">Оклад специалиста (₽/мес)</label>
-                <input type="number" value={tcSalary} onChange={e => setTcSalary(Number(e.target.value))} className="w-full mt-1 bg-slate-950 border border-slate-800 rounded p-2 text-sm" />
+          <div className="max-w-5xl space-y-6">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-semibold">Дашборд воронки рекрутинга и аналитика отказов</h2>
+              <select
+                value={analyticsVacancyFilter}
+                onChange={e => setAnalyticsVacancyFilter(e.target.value)}
+                className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-xs"
+              >
+                <option value="all">Все вакансии ({candidates.length} канд.)</option>
+                {vacancies.map(v => (
+                  <option key={v.id} value={v.id}>{v.title}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="grid grid-cols-12 gap-6">
+              {/* Горизонтальная воронка конверсии по этапам */}
+              <div className="col-span-7 bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-3">
+                <h3 className="text-sm font-semibold text-emerald-400">
+                  Этапы подбора и переходы между этапами
+                </h3>
+                <p className="text-xs text-slate-400">Учитываются записанные этапы. Переход — доля достигших предыдущего этапа, которые также побывали на текущем.</p>
+                <div className="space-y-3">
+                  {funnelSteps.map((step, i) => (
+                    <div key={step.stage} className="space-y-1">
+                      <div className="flex justify-between text-xs">
+                        <span className="font-medium text-slate-200">
+                          {step.label}{' '}
+                          <span className="text-slate-500">
+                            (сейчас на этапе: {step.currentCount})
+                          </span>
+                        </span>
+                        <span className="text-slate-300">
+                          <strong className="text-emerald-400">{step.reachedCount}</strong> чел. ({step.conversionFromTop}% от входа
+                          {i > 0 ? ` • ${step.conversionFromPrev}% из пред.` : ''})
+                        </span>
+                      </div>
+                      <div className="w-full h-3 bg-slate-950 rounded-full overflow-hidden border border-slate-800">
+                        <div
+                          className="h-full bg-gradient-to-r from-emerald-600 to-teal-400 transition-all duration-300"
+                          style={{ width: `${Math.max(step.conversionFromTop, step.reachedCount > 0 ? 6 : 0)}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
-              <div>
-                <label className="text-xs text-slate-400">Срок закрытия вакансии (Time to Fill, дней)</label>
-                <input type="number" value={tcDays} onChange={e => setTcDays(Number(e.target.value))} className="w-full mt-1 bg-slate-950 border border-slate-800 rounded p-2 text-sm" />
-              </div>
-              <div>
-                <label className="text-xs text-slate-400">Срок выхода на 100% KPI (месяцев)</label>
-                <input type="number" value={tcOnboarding} onChange={e => setTcOnboarding(Number(e.target.value))} className="w-full mt-1 bg-slate-950 border border-slate-800 rounded p-2 text-sm" />
+
+              {/* Парето-диаграмма причин отказов */}
+              <div className="col-span-5 bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-3">
+                <h3 className="text-sm font-semibold text-rose-400">
+                  Структура причин отказов
+                </h3>
+                {rejectionMetrics.length === 0 ? (
+                  <p className="text-xs text-slate-500">По выбранному фильтру пока нет кандидатов в статусе «Отказ».</p>
+                ) : (
+                  <div className="space-y-3">
+                    {rejectionMetrics.map(item => (
+                      <div key={item.reason} className="space-y-1">
+                        <div className="flex justify-between text-xs">
+                          <span className="text-slate-300 truncate pr-2">{item.reason}</span>
+                          <span className="text-rose-400 font-semibold shrink-0">
+                            {item.count} ({item.sharePercent}%)
+                          </span>
+                        </div>
+                        <div className="w-full h-2.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800">
+                          <div
+                            className="h-full bg-rose-500/80"
+                            style={{ width: `${item.sharePercent}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 
-            <div className="grid grid-cols-4 gap-4">
-              <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl">
-                <div className="text-xs text-slate-400">Потери от простоя</div>
-                <div className="text-lg font-bold mt-1">{turnoverResult.vacancyLoss.toLocaleString('ru-RU')} ₽</div>
+            {/* Калькулятор стоимости замены сотрудника */}
+            <div className="pt-2 space-y-4">
+              <h3 className="text-lg font-semibold">Калькулятор стоимости замены сотрудника (Turnover Cost)</h3>
+              <div className="grid grid-cols-3 gap-4 bg-slate-900 p-4 rounded-xl border border-slate-800">
+                <div>
+                  <label className="text-xs text-slate-400">Оклад специалиста (₽/мес)</label>
+                  <input type="number" value={tcSalary} onChange={e => setTcSalary(Number(e.target.value))} className="w-full mt-1 bg-slate-950 border border-slate-800 rounded p-2 text-sm" />
+                </div>
+                <div>
+                  <label className="text-xs text-slate-400">Срок закрытия вакансии (Time to Fill, дней)</label>
+                  <input type="number" value={tcDays} onChange={e => setTcDays(Number(e.target.value))} className="w-full mt-1 bg-slate-950 border border-slate-800 rounded p-2 text-sm" />
+                </div>
+                <div>
+                  <label className="text-xs text-slate-400">Срок выхода на 100% KPI (месяцев)</label>
+                  <input type="number" value={tcOnboarding} onChange={e => setTcOnboarding(Number(e.target.value))} className="w-full mt-1 bg-slate-950 border border-slate-800 rounded p-2 text-sm" />
+                </div>
               </div>
-              <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl">
-                <div className="text-xs text-slate-400">Потери на адаптации</div>
-                <div className="text-lg font-bold mt-1">{turnoverResult.rampUpLoss.toLocaleString('ru-RU')} ₽</div>
-              </div>
-              <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl">
-                <div className="text-xs text-slate-400">Затраты на подбор</div>
-                <div className="text-lg font-bold mt-1">{turnoverResult.hiringCost.toLocaleString('ru-RU')} ₽</div>
-              </div>
-              <div className="bg-emerald-950/40 border border-emerald-500/40 p-4 rounded-xl">
-                <div className="text-xs text-emerald-300">Итого стоимость потери</div>
-                <div className="text-xl font-bold text-emerald-400 mt-1">
-                  {turnoverResult.totalCost.toLocaleString('ru-RU')} ₽ ({turnoverResult.salaryMultiplier} оклада)
+
+              <div className="grid grid-cols-4 gap-4">
+                <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl">
+                  <div className="text-xs text-slate-400">Потери от простоя</div>
+                  <div className="text-lg font-bold mt-1">{turnoverResult.vacancyLoss.toLocaleString('ru-RU')} ₽</div>
+                </div>
+                <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl">
+                  <div className="text-xs text-slate-400">Потери на адаптации</div>
+                  <div className="text-lg font-bold mt-1">{turnoverResult.rampUpLoss.toLocaleString('ru-RU')} ₽</div>
+                </div>
+                <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl">
+                  <div className="text-xs text-slate-400">Затраты на подбор</div>
+                  <div className="text-lg font-bold mt-1">{turnoverResult.hiringCost.toLocaleString('ru-RU')} ₽</div>
+                </div>
+                <div className="bg-emerald-950/40 border border-emerald-500/40 p-4 rounded-xl">
+                  <div className="text-xs text-emerald-300">Итого стоимость потери</div>
+                  <div className="text-xl font-bold text-emerald-400 mt-1">
+                    {turnoverResult.totalCost.toLocaleString('ru-RU')} ₽ ({turnoverResult.salaryMultiplier} оклада)
+                  </div>
                 </div>
               </div>
             </div>
