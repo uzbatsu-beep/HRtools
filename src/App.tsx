@@ -7,6 +7,7 @@ import {
 import { Vacancy, Candidate, CandidateStage, Competency } from './db/schema';
 import { BOOLEAN_PRESETS, REJECTION_REASONS } from './db/seed';
 import { db, initAndMigrateDatabase } from './db/database';
+import { parseBackup, restoreBackup } from './db/backup';
 import { parseRawResumeText } from './utils/cvParser';
 import { extractTextFromFile } from './utils/fileExtractor';
 import { DEFAULT_LLM_CONFIG, analyzeCandidateWithLocalLlm } from './utils/localLlm';
@@ -41,6 +42,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'boolean' | 'vacancies' | 'ats' | 'scorecard' | 'compare' | 'analytics' | 'docs'>('ats');
   const [offerDirty, setOfferDirty] = useState(false);
   const [dbReady, setDbReady] = useState(false);
+  const [databaseRevision, setDatabaseRevision] = useState(0);
   const [vacancies, setVacancies] = useState<Vacancy[]>([]);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
 
@@ -460,20 +462,19 @@ export default function App() {
     if (!file) return;
     try {
       const text = await file.text();
-      const parsed = JSON.parse(text);
-      if (Array.isArray(parsed.vacancies) && Array.isArray(parsed.candidates)) {
-        await db.transaction('rw', db.vacancies, db.candidates, async () => {
-          await db.vacancies.clear();
-          await db.candidates.clear();
-          await db.vacancies.bulkPut(parsed.vacancies);
-          await db.candidates.bulkPut(parsed.candidates);
-        });
-        setVacancies(parsed.vacancies);
-        setCandidates(parsed.candidates);
-        setUploadStatus(`База IndexedDB восстановлена (${parsed.candidates.length} кандидатов)`);
-      }
-    } catch {
-      alert('Некорректный JSON-файл резервной копии');
+      const parsed = parseBackup(text);
+      if (!window.confirm(`Восстановить ${parsed.vacancies.length} вакансий и ${parsed.candidates.length} кандидатов? Текущая база будет заменена. Перед продолжением сохраните резервную копию текущих данных.`)) return;
+      await restoreBackup(db, parsed);
+      setVacancies(parsed.vacancies);
+      setCandidates(parsed.candidates);
+      setDossierId(null);
+      setOfferDirty(false);
+      setDatabaseRevision(revision => revision + 1);
+      setUploadStatus(`База IndexedDB восстановлена (${parsed.candidates.length} кандидатов)`);
+    } catch (error) {
+      alert(`Не удалось восстановить резервную копию: ${error instanceof Error ? error.message : 'неизвестная ошибка'}`);
+    } finally {
+      e.target.value = '';
     }
   };
 
@@ -1579,7 +1580,7 @@ export default function App() {
 
         {dbReady && activeTab === 'docs' && activeCandidate && (
           vacancies.find(v => v.id === activeCandidate.vacancyId) ? (
-            <OfferEditor key={activeCandidate.id} candidate={activeCandidate} vacancy={vacancies.find(v => v.id === activeCandidate.vacancyId)!} candidates={candidates} onSelect={setActiveCandId} onDirtyChange={setOfferDirty}
+            <OfferEditor key={`${databaseRevision}:${activeCandidate.id}`} candidate={activeCandidate} vacancy={vacancies.find(v => v.id === activeCandidate.vacancyId)!} candidates={candidates} onSelect={setActiveCandId} onDirtyChange={setOfferDirty}
               onSave={async draft => {
                 const saved = await db.candidates.update(activeCandidate.id, { offerDraft: draft });
                 if (!saved) throw new Error('Candidate not found');
