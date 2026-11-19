@@ -444,7 +444,7 @@ export default function App() {
       db.candidates.toArray()
     ]);
     const payload = JSON.stringify({
-      engine: 'IndexedDB-Dexie-v1.0.0',
+      engine: 'IndexedDB-Dexie-v1.0.1',
       exportedAt: new Date().toISOString(),
       vacancies: allVacancies,
       candidates: allCandidates
@@ -486,7 +486,7 @@ export default function App() {
             <h1 className="text-lg font-bold tracking-tight text-emerald-400">HRtools</h1>
             <div className="flex items-center gap-1.5 text-[11px] text-slate-400 mt-0.5">
               <Database className="w-3 h-3 text-emerald-400" />
-              <span>v1.0.0 • IndexedDB ({candidates.length})</span>
+              <span>v1.0.1 • IndexedDB ({candidates.length})</span>
             </div>
           </div>
           <nav className="space-y-1">
